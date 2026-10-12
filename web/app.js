@@ -3,7 +3,7 @@
 // All dynamic content is inserted as text nodes via h(); webhook payloads are
 // untrusted, so nothing in this file assigns innerHTML.
 
-const state = { types: [], channels: [], integrations: [], settings: {}, version: '' };
+const state = { types: [], channels: [], integrations: [], settings: {}, update: {}, version: '' };
 const app = document.getElementById('app');
 const modalRoot = document.getElementById('modal-root');
 
@@ -67,8 +67,8 @@ const hookURL = (token) => baseURL() + '/api/v1/hook/' + token;
 function tile(type) {
   const colors = {
     sonarr: '#35c5f4', radarr: '#e0a82e', lidarr: '#2a9d5c', readarr: '#b5403a', prowlarr: '#e66001',
-    plex: '#cc7b19', tautulli: '#d9902f', overseerr: '#7c5cf6', jellyseerr: '#9d4edd',
-    qbittorrent: '#3b82c4', sabnzbd: '#d4a514', system: '#4b5d7a', docker: '#1d91e6', healthcheck: '#2e9d74',
+    plex: '#cc7b19', tautulli: '#d9902f', seerr: '#6366f1', overseerr: '#7c5cf6', jellyseerr: '#9d4edd',
+    qbittorrent: '#3b82c4', sabnzbd: '#d4a514', nzbget: '#3aa655', nzbhydra2: '#c2571a', system: '#4b5d7a', docker: '#1d91e6', healthcheck: '#2e9d74',
   };
   const def = typeDef(type);
   const t = h('div', { class: 'tile' }, (def ? def.label : type).slice(0, 2));
@@ -156,10 +156,10 @@ function authScreen(setup) {
 }
 
 async function loadAll() {
-  const [types, channels, integrations, settings] = await Promise.all([
-    api('GET', '/types'), api('GET', '/channels'), api('GET', '/integrations'), api('GET', '/settings'),
+  const [types, channels, integrations, settings, update] = await Promise.all([
+    api('GET', '/types'), api('GET', '/channels'), api('GET', '/integrations'), api('GET', '/settings'), api('GET', '/update'),
   ]);
-  Object.assign(state, { types, channels, integrations, settings });
+  Object.assign(state, { types, channels, integrations, settings, update });
 }
 
 // ---------- shell / routing ----------
@@ -185,8 +185,12 @@ function renderShell() {
       h('div', { class: 'brand' }, h('img', { src: 'favicon.svg', alt: '' }), state.settings.instance_name || 'Notified'),
       navEl,
       h('div', { class: 'spacer' }),
-      h('div', { class: 'foot' }, 'v' + state.version, ' · ',
-        h('a', { href: '#', onclick: async (e) => { e.preventDefault(); await api('POST', '/logout'); boot(); } }, 'Sign out'))),
+      state.update.update_available ? h('a', {
+        class: 'update-pill', href: state.update.url || '#settings', target: state.update.url ? '_blank' : null, rel: 'noopener noreferrer',
+        title: 'Installed: ' + verLabel(state.update.current),
+      }, 'Update available: ' + verLabel(state.update.latest)) : null,
+      h('div', { class: 'foot' }, h('span', {}, verLabel(state.version)), '·', themeButton(), '·',
+        h('button', { class: 'linkbtn', onclick: async () => { try { await api('POST', '/logout'); } catch (e) { /* already signed out */ } boot(); } }, 'Sign out'))),
     mainEl));
 }
 
@@ -199,6 +203,26 @@ function route() {
   pages[name].render().catch(fail);
 }
 window.addEventListener('hashchange', route);
+
+// Release versions get a "v" prefix; development builds are shown as they are.
+function verLabel(v) {
+  return /^\d/.test(v || '') ? 'v' + v : (v || 'unknown');
+}
+
+const themeNames = { system: 'Auto', dark: 'Dark', light: 'Light' };
+
+function themeButton() {
+  const order = ['system', 'dark', 'light'];
+  const btn = h('button', {
+    class: 'linkbtn', title: 'Switch between automatic, dark and light theme',
+    onclick: () => {
+      const next = order[(order.indexOf(NotifiedTheme.get()) + 1) % order.length];
+      NotifiedTheme.set(next);
+      btn.textContent = themeNames[next] + ' theme';
+    },
+  }, themeNames[NotifiedTheme.get()] + ' theme');
+  return btn;
+}
 
 function pageHead(title, sub, ...actions) {
   return h('div', { class: 'page-head' },
@@ -606,7 +630,57 @@ async function settingsPage() {
             cur.value = next.value = '';
             toast('Password changed');
           }),
-        }, 'Change password'))));
+        }, 'Change password')),
+      updatesCard(),
+      appearanceCard()));
+}
+
+function updatesCard() {
+  const u = state.update;
+  const s = state.settings;
+  const enabled = h('input', { type: 'checkbox', checked: s.update_check !== 'false' });
+  const channel = h('select', {},
+    h('option', { value: 0 }, 'Do not notify'),
+    state.channels.map((c) => h('option', { value: c.id, selected: String(c.id) === s.update_channel_id }, c.name)));
+  const status = u.update_available
+    ? h('span', { class: 'badge warn' }, 'update available')
+    : (u.latest ? h('span', { class: 'badge ok' }, 'up to date') : h('span', { class: 'badge' }, 'unknown'));
+  return h('div', { class: 'card' }, h('h2', {}, 'Updates'),
+    h('dl', { class: 'kv' },
+      h('dt', {}, 'Installed'), h('dd', {}, verLabel(u.current), ' ', status),
+      h('dt', {}, 'Latest release'), h('dd', {}, u.latest
+        ? (u.url ? h('a', { href: u.url, target: '_blank', rel: 'noopener noreferrer' }, verLabel(u.latest)) : verLabel(u.latest))
+        : 'none found yet'),
+      h('dt', {}, 'Last checked'), h('dd', {}, u.checked_at ? ago(u.checked_at) : 'never')),
+    u.error ? h('div', { class: 'error' }, u.error) : null,
+    u.update_available ? h('div', { class: 'setup' }, 'To update, run on your Docker host:\ndocker compose pull && docker compose up -d') : null,
+    h('label', { class: 'check' }, enabled, 'Check GitHub for new releases every 6 hours'),
+    field('Announce new versions in', channel, 'Sends one Discord message per new release.'),
+    h('div', { class: 'row' },
+      h('button', {
+        class: 'btn primary', onclick: (e) => busy(e.target, async () => {
+          state.settings = await api('PUT', '/settings', { update_check: String(enabled.checked), update_channel_id: channel.value });
+          toast('Update settings saved');
+        }),
+      }, 'Save'),
+      h('button', {
+        class: 'btn', onclick: (e) => busy(e.target, async () => {
+          state.update = await api('POST', '/update/check');
+          if (state.update.error) toast(state.update.error, true);
+          else toast(state.update.update_available ? 'Update available: ' + verLabel(state.update.latest) : 'You are up to date');
+          renderShell();
+          route();
+        }),
+      }, 'Check now')));
+}
+
+function appearanceCard() {
+  const sel = h('select', {
+    onchange: (e) => { NotifiedTheme.set(e.target.value); renderShell(); route(); },
+  }, Object.entries(themeNames).map(([k, label]) =>
+    h('option', { value: k, selected: NotifiedTheme.get() === k }, k === 'system' ? 'Auto (follow this device)' : label)));
+  return h('div', { class: 'card' }, h('h2', {}, 'Appearance'),
+    field('Theme', sel, 'Saved in this browser.'));
 }
 
 boot();

@@ -11,9 +11,11 @@ delivered to Discord as rich embeds. One small container, one SQLite file, no ex
 | Starr apps | Sonarr, Radarr, Lidarr, Readarr, Prowlarr | Webhook (+ optional queue polling) | Grab, import, upgrade, rename, added, deleted, health, health restored, app update, manual interaction, stuck queue items |
 | Media servers | Plex | Webhook (Plex Pass) | Play, pause, resume, stop, watched, new in library, new device, database backup/corruption |
 | Media servers | Tautulli | Webhook | Play, stop, pause, resume, watched, errors, buffering, recently added, server up/down, updates |
-| Requests | Overseerr, Jellyseerr | Webhook | Pending, approved, available, declined, failed, issues |
+| Requests | Seerr, Overseerr, Jellyseerr | Webhook | Pending, approved, auto-requested, available, declined, failed, issues |
 | Downloaders | qBittorrent | Polling | Stalled downloads, errored torrents |
 | Downloaders | SABnzbd | Polling | Failed downloads, queue paused/resumed |
+| Downloaders | NZBGet | Polling | Failed downloads (with reason), downloads paused/resumed |
+| Indexers | NZBHydra 2 | Polling | Indexer disabled after errors, indexer re-enabled |
 | System | System monitor | Polling | CPU, memory and disk thresholds, periodic snapshot |
 | System | Docker containers | Polling (Docker socket) | Container stopped, started, unhealthy, healthy |
 | System | Service check | Polling | HTTP or TCP target down / recovered |
@@ -30,7 +32,7 @@ docker compose up -d
 ```
 
 This pulls `ghcr.io/tet0r/notified:latest` (amd64 and arm64), which CI publishes from `main`.
-Update later with `docker compose pull && docker compose up -d`. To build from source instead,
+To build from source instead,
 clone the repo, switch the compose file to `build: .` and run `docker compose up -d --build`.
 
 Open `http://<host>:8080` and create the admin account. Then:
@@ -39,6 +41,20 @@ Open `http://<host>:8080` and create the admin account. Then:
 2. **Integrations** → add an app. Each integration gets its own webhook URL and setup steps to paste into the app.
 3. **Settings** → set **Base URL** to the address your apps use to reach Notified (for example
    `http://notified:8080` on a shared Docker network) so the displayed webhook URLs are correct.
+
+### Versions and updates
+
+Releases are tagged `vMAJOR.MINOR.PATCH`. Each release publishes `ghcr.io/tet0r/notified:X.Y.Z`,
+`:X.Y` and `:latest`; every push to `main` publishes `:edge`. Pin a tag in the compose file if you
+want to control when you upgrade.
+
+Notified checks GitHub for a newer release every 6 hours, shows a notice in the sidebar, and can
+announce it in a Discord channel of your choice (**Settings → Updates**). The check only reads the
+public releases API and can be switched off there. Update with:
+
+```bash
+docker compose pull && docker compose up -d
+```
 
 ### Compose notes
 
@@ -55,6 +71,7 @@ Open `http://<host>:8080` and create the admin account. Then:
 | `NOTIFIED_PORT` | `8080` | Listen port |
 | `NOTIFIED_DATA_DIR` | `/data` | Where the SQLite database lives |
 | `NOTIFIED_RESET_ADMIN` | unset | Set to `1` for one start to clear the admin account and run setup again |
+| `NOTIFIED_UPDATE_URL` | this repo | GitHub "latest release" API URL to check for updates (for forks) |
 | `TZ` | UTC | Timezone |
 
 ## Security
@@ -70,9 +87,12 @@ Open `http://<host>:8080` and create the admin account. Then:
 Needs Go 1.26+. No CGO or Node toolchain: the UI is plain HTML/CSS/JS embedded in the binary.
 
 ```bash
-go build -o notified .
+go build -ldflags "-X main.version=$(git describe --tags --always | sed 's/^v//')" -o notified .
 NOTIFIED_DATA_DIR=./data ./notified
 ```
+
+To cut a release, push a tag: `git tag v1.2.3 && git push origin v1.2.3`. CI builds the images
+and creates the GitHub release with generated notes.
 
 The System monitor and Docker integrations only work on Linux.
 

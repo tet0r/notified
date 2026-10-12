@@ -190,7 +190,10 @@ func parseTautulli(in *Integration, p J) (string, Embed, bool) {
 	return event, e, true
 }
 
-// ---- Overseerr / Jellyseerr ----
+// ---- Seerr / Overseerr / Jellyseerr ----
+//
+// Seerr is the merged successor of Overseerr and Jellyseerr and sends the same
+// default webhook payload, so one parser serves all three.
 
 var seerrEventMap = map[string]struct {
 	event string
@@ -199,7 +202,7 @@ var seerrEventMap = map[string]struct {
 	"MEDIA_PENDING":        {"pending", colorAmber},
 	"MEDIA_APPROVED":       {"approved", colorBlue},
 	"MEDIA_AUTO_APPROVED":  {"auto_approved", colorBlue},
-	"MEDIA_AUTO_REQUESTED": {"auto_approved", colorBlue},
+	"MEDIA_AUTO_REQUESTED": {"auto_requested", colorBlue},
 	"MEDIA_AVAILABLE":      {"available", colorGreen},
 	"MEDIA_DECLINED":       {"declined", colorRed},
 	"MEDIA_FAILED":         {"failed", colorRed},
@@ -224,6 +227,9 @@ func parseSeerr(in *Integration, p J) (string, Embed, bool) {
 	}
 	if subject := p.Str("subject"); subject != "" {
 		e.Description = strings.TrimSpace("**" + subject + "**\n" + e.Description)
+	}
+	if event == "test" && p.Str("event") == "" {
+		e.Title = in.Name + " test notification"
 	}
 	e.Thumb(p.Str("image"))
 

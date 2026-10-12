@@ -21,6 +21,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - run: go test ./...
       - name: Check formatting
         run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
       - name: Check go.mod is tidy
@@ -44,6 +45,7 @@ jobs:
           context: .
           load: true
           tags: notified:ci
+          build-args: VERSION=0.0.0-ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Smoke test
@@ -57,6 +59,7 @@ jobs:
           test -n "$ok"
           # First start must ask for setup and serve the web UI.
           curl -fsS http://127.0.0.1:8080/api/status | grep -q '"setup_required":true'
+          curl -fsS http://127.0.0.1:8080/api/status | grep -q '"version":"0.0.0-ci"'
           curl -fsS http://127.0.0.1:8080/ | grep -q '<div id="app">'
       - name: Validate compose file
         run: docker compose config --quiet
@@ -71,6 +74,11 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history and tags, for git describe
+      - name: Work out the version
+        id: version
+        run: echo "version=$(git describe --tags --always | sed 's/^v//')" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
@@ -82,9 +90,10 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
+          # "latest" follows releases (added automatically for version tags);
+          # "edge" follows main.
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,format=short
+            type=edge,branch=main
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
       - uses: docker/build-push-action@v6
@@ -92,7 +101,23 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          build-args: VERSION=${{ steps.version.outputs.version }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  release:
+    name: GitHub release
+    needs: publish
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create release with generated notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" --title "$TAG" --generate-notes --verify-tag

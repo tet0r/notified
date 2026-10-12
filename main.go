@@ -13,7 +13,8 @@ import (
 	"time"
 )
 
-var version = "0.1.0"
+// version is set at build time: -ldflags "-X main.version=1.2.3".
+var version = "dev"
 
 type App struct {
 	db    *sql.DB
@@ -57,6 +58,7 @@ func main() {
 	go app.sender(ctx)
 	go app.scheduler(ctx)
 	go app.janitor(ctx)
+	go app.updateLoop(ctx)
 
 	srv := &http.Server{
 		Addr:              ":" + port,

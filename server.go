@@ -52,6 +52,8 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("GET /api/settings", a.auth(a.handleSettingsGet))
 	mux.HandleFunc("PUT /api/settings", a.auth(a.handleSettingsPut))
 	mux.HandleFunc("POST /api/settings/password", a.auth(a.handlePassword))
+	mux.HandleFunc("GET /api/update", a.auth(a.handleUpdateGet))
+	mux.HandleFunc("POST /api/update/check", a.auth(a.handleUpdateCheck))
 
 	sub, err := fs.Sub(webFS, "web")
 	if err != nil {

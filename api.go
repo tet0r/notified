@@ -428,7 +428,7 @@ func (a *App) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 // ---- settings ----
 
-var editableSettings = []string{"instance_name", "bot_name", "avatar_url", "base_url", "retention"}
+var editableSettings = []string{"instance_name", "bot_name", "avatar_url", "base_url", "retention", "update_check", "update_channel_id"}
 
 func (a *App) handleSettingsGet(w http.ResponseWriter, r *http.Request) {
 	out := map[string]string{"admin_user": a.setting("admin_user")}
@@ -463,11 +463,18 @@ func (a *App) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 				httpError(w, http.StatusBadRequest, "history size must be between 100 and 100000")
 				return
 			}
+		case "update_check":
+			v = strconv.FormatBool(v == "true")
+		case "update_channel_id":
+			n, _ := strconv.ParseInt(v, 10, 64)
+			v = strconv.FormatInt(n, 10)
 		}
 		if err := a.setSetting(k, v); err != nil {
 			httpError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 	}
+	// A newly chosen channel should hear about an update that is already known.
+	a.notifyUpdate()
 	a.handleSettingsGet(w, r)
 }

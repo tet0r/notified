@@ -39,8 +39,8 @@ type TypeDef struct {
 
 var typeOrder = []string{
 	"sonarr", "radarr", "lidarr", "readarr", "prowlarr",
-	"plex", "tautulli", "overseerr", "jellyseerr",
-	"qbittorrent", "sabnzbd",
+	"plex", "tautulli", "seerr", "overseerr", "jellyseerr",
+	"qbittorrent", "sabnzbd", "nzbget", "nzbhydra2",
 	"system", "docker", "healthcheck",
 }
 
@@ -81,6 +81,7 @@ func buildTypeDefs() []*TypeDef {
 		ev("pending", "Request pending approval", true),
 		ev("approved", "Request approved", true),
 		ev("auto_approved", "Request auto-approved", true),
+		ev("auto_requested", "Request submitted automatically (watchlist)", true),
 		ev("available", "Media available", true),
 		ev("declined", "Request declined", true),
 		ev("failed", "Request failed", true),
@@ -225,6 +226,11 @@ func buildTypeDefs() []*TypeDef {
 			Parse: parseTautulli,
 		},
 		{
+			Type: "seerr", Label: "Seerr", Group: "Requests", Webhook: true,
+			Fields: seerrFields, Setup: seerrSetup("Seerr"), Events: seerrEvents,
+			Parse: parseSeerr,
+		},
+		{
 			Type: "overseerr", Label: "Overseerr", Group: "Requests", Webhook: true,
 			Fields: seerrFields, Setup: seerrSetup("Overseerr"), Events: seerrEvents,
 			Parse: parseSeerr,
@@ -264,6 +270,39 @@ func buildTypeDefs() []*TypeDef {
 				ev("resumed", "Queue resumed", false),
 			},
 			DefaultInterval: 300, Poll: pollSab,
+		},
+		{
+			Type: "nzbget", Label: "NZBGet", Group: "Downloaders", Poller: true,
+			Fields: []FieldDef{
+				{Key: "url", Label: "NZBGet URL", Kind: "text", Help: "e.g. http://nzbget:6789"},
+				{Key: "username", Label: "Username", Kind: "text", Help: "ControlUsername from Settings → Security."},
+				{Key: "password", Label: "Password", Kind: "password", Help: "ControlPassword."},
+				{Key: "interval", Label: "Check interval (seconds)", Kind: "number", Default: "300"},
+			},
+			Setup: "Notified polls the NZBGet JSON-RPC API and reports failed downloads and when downloading is paused.",
+			Events: []EventDef{
+				ev("failed", "Download failed", true),
+				ev("paused", "Downloads paused", true),
+				ev("resumed", "Downloads resumed", false),
+			},
+			DefaultInterval: 300, Poll: pollNzbget,
+		},
+		{
+			Type: "nzbhydra2", Label: "NZBHydra 2", Group: "Indexers", Poller: true,
+			Fields: []FieldDef{
+				{Key: "url", Label: "NZBHydra URL", Kind: "text", Help: "e.g. http://nzbhydra2:5076"},
+				{Key: "apikey", Label: "API key", Kind: "password", Help: "Config → Main → API key."},
+				{Key: "interval", Label: "Check interval (seconds)", Kind: "number", Default: "300"},
+				{Key: "min_level", Label: "Minimum temporary-disable level to report", Kind: "number", Default: "1",
+					Help: "NZBHydra raises the level each time an indexer fails again. Raise this to ignore brief hiccups. Permanent disables are always reported."},
+			},
+			Setup: "Notified polls NZBHydra's stats API and reports indexers that NZBHydra disables after errors, and when they come back.\n" +
+				"In NZBHydra enable Config → Authorization → \"Allow stats access via API\", otherwise the check is refused.",
+			Events: []EventDef{
+				ev("indexer_disabled", "Indexer disabled after errors", true),
+				ev("indexer_enabled", "Indexer re-enabled", true),
+			},
+			DefaultInterval: 300, Poll: pollHydra,
 		},
 		{
 			Type: "system", Label: "System monitor", Group: "System", Poller: true,
