@@ -8,9 +8,10 @@ delivered to Discord as rich embeds. One small container, one SQLite file, no ex
 
 | Group | Integration | How it works | Events |
 |---|---|---|---|
-| Starr apps | Sonarr, Radarr, Lidarr, Readarr, Prowlarr | Webhook (+ optional queue polling) | Grab, import, upgrade, rename, added, deleted, health, health restored, app update, manual interaction, stuck queue items |
+| \*arr Apps | Sonarr, Radarr, Lidarr, Readarr, Prowlarr | Webhook (+ optional queue polling) | Grab, import, upgrade, rename, added, deleted, health, health restored, app update, manual interaction, stuck queue items |
 | Media servers | Plex | Webhook (Plex Pass) | Play, pause, resume, stop, watched, new in library, new device, database backup/corruption |
-| Media servers | Tautulli | Webhook | Play, stop, pause, resume, watched, errors, buffering, recently added, server up/down, updates |
+| Media servers | Jellyfin | Webhook (Webhook plugin) | Play, stop, new in library, failed sign-ins, user lockouts, failed tasks, plugin changes, restart required |
+| Media monitoring | Tautulli | Webhook | Play, stop, pause, resume, watched, errors, buffering, recently added, server up/down, updates |
 | Requests | Seerr, Overseerr, Jellyseerr | Webhook | Pending, approved, auto-requested, available, declined, failed, issues |
 | Downloaders | qBittorrent | Polling | Stalled downloads, errored torrents |
 | Downloaders | SABnzbd | Polling | Failed downloads, queue paused/resumed |

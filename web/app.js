@@ -655,8 +655,6 @@ function updatesCard() {
     u.error ? h('div', { class: 'error' }, u.error) : null,
     u.update_available ? h('div', { class: 'setup' }, 'To update, run on your Docker host:\ndocker compose pull && docker compose up -d') : null,
     h('label', { class: 'check' }, enabled, 'Check GitHub for new releases every 6 hours'),
-    h('div', { class: 'help' }, 'New versions are shown here and in the sidebar. Nothing is sent to Discord.'),
-    h('div', {}, ' '),
     h('div', { class: 'row' },
       h('button', {
         class: 'btn primary', onclick: (e) => busy(e.target, async () => {

@@ -39,7 +39,7 @@ type TypeDef struct {
 
 var typeOrder = []string{
 	"sonarr", "radarr", "lidarr", "readarr", "prowlarr",
-	"plex", "tautulli", "seerr", "overseerr", "jellyseerr",
+	"plex", "jellyfin", "tautulli", "seerr", "overseerr", "jellyseerr",
 	"qbittorrent", "sabnzbd", "nzbget", "nzbhydra2",
 	"system", "docker", "healthcheck",
 }
@@ -100,7 +100,7 @@ func buildTypeDefs() []*TypeDef {
 
 	return []*TypeDef{
 		{
-			Type: "sonarr", Label: "Sonarr", Group: "Starr apps", Webhook: true, Poller: true,
+			Type: "sonarr", Label: "Sonarr", Group: "*arr Apps", Webhook: true, Poller: true,
 			Fields: starrFields("Sonarr"), Setup: starrSetup("Sonarr"),
 			Events: withCommon(
 				ev("grab", "Episode grabbed", true),
@@ -115,7 +115,7 @@ func buildTypeDefs() []*TypeDef {
 			DefaultInterval: 600, Parse: parseStarr("sonarr"), Poll: pollStarrQueue("sonarr"),
 		},
 		{
-			Type: "radarr", Label: "Radarr", Group: "Starr apps", Webhook: true, Poller: true,
+			Type: "radarr", Label: "Radarr", Group: "*arr Apps", Webhook: true, Poller: true,
 			Fields: starrFields("Radarr"), Setup: starrSetup("Radarr"),
 			Events: withCommon(
 				ev("grab", "Movie grabbed", true),
@@ -130,7 +130,7 @@ func buildTypeDefs() []*TypeDef {
 			DefaultInterval: 600, Parse: parseStarr("radarr"), Poll: pollStarrQueue("radarr"),
 		},
 		{
-			Type: "lidarr", Label: "Lidarr", Group: "Starr apps", Webhook: true, Poller: true,
+			Type: "lidarr", Label: "Lidarr", Group: "*arr Apps", Webhook: true, Poller: true,
 			Fields: starrFields("Lidarr"), Setup: starrSetup("Lidarr"),
 			Events: withCommon(
 				ev("grab", "Album grabbed", true),
@@ -146,7 +146,7 @@ func buildTypeDefs() []*TypeDef {
 			DefaultInterval: 600, Parse: parseStarr("lidarr"), Poll: pollStarrQueue("lidarr"),
 		},
 		{
-			Type: "readarr", Label: "Readarr", Group: "Starr apps", Webhook: true, Poller: true,
+			Type: "readarr", Label: "Readarr", Group: "*arr Apps", Webhook: true, Poller: true,
 			Fields: starrFields("Readarr"), Setup: starrSetup("Readarr"),
 			Events: withCommon(
 				ev("grab", "Book grabbed", true),
@@ -163,7 +163,7 @@ func buildTypeDefs() []*TypeDef {
 			DefaultInterval: 600, Parse: parseStarr("readarr"), Poll: pollStarrQueue("readarr"),
 		},
 		{
-			Type: "prowlarr", Label: "Prowlarr", Group: "Starr apps", Webhook: true,
+			Type: "prowlarr", Label: "Prowlarr", Group: "*arr Apps", Webhook: true,
 			Fields: []FieldDef{}, Setup: starrSetup("Prowlarr"),
 			Events: []EventDef{
 				ev("grab", "Release grabbed", false),
@@ -197,7 +197,40 @@ func buildTypeDefs() []*TypeDef {
 			Parse: parsePlex,
 		},
 		{
-			Type: "tautulli", Label: "Tautulli", Group: "Media servers", Webhook: true,
+			Type: "jellyfin", Label: "Jellyfin", Group: "Media servers", Webhook: true,
+			Fields: []FieldDef{
+				{Key: "users", Label: "Only these users", Kind: "text", Help: "Optional comma-separated Jellyfin usernames for playback events. Blank means everyone."},
+			},
+			Setup: "Jellyfin sends webhooks through its official Webhook plugin.\n" +
+				"1. Dashboard → Plugins → Catalog → install Webhook, then restart Jellyfin.\n" +
+				"2. Open the Webhook plugin settings and fill in Server Url with your Jellyfin address (used for links and artwork).\n" +
+				"3. Add Generic Destination, set Webhook Url to {URL}, tick the notification types you want, and tick Send All Properties.\n" +
+				"Leave Playback Progress unticked unless you need it: Jellyfin sends it every few seconds. New items arrive after a short delay while Jellyfin fetches metadata.",
+			Events: []EventDef{
+				ev("play", "Playback started", true),
+				ev("stop", "Playback stopped", true),
+				ev("progress", "Playback progress (very frequent)", false),
+				ev("new", "New item added to library", true),
+				ev("item_deleted", "Item removed from library", false),
+				ev("auth_failure", "Failed sign-in", true),
+				ev("auth_success", "User signed in", false),
+				ev("session_start", "Session started", false),
+				ev("user_locked_out", "User locked out", true),
+				ev("user_created", "User created", true),
+				ev("user_deleted", "User deleted", true),
+				ev("user_changed", "User updated or password changed", false),
+				ev("user_data", "Watch state changed (very frequent)", false),
+				ev("pending_restart", "Restart required", true),
+				ev("task_failed", "Scheduled task failed", true),
+				ev("task_completed", "Scheduled task completed", false),
+				ev("plugin", "Plugin installed, updated or removed", true),
+				ev("plugin_failed", "Plugin installation failed", true),
+				ev("subtitle_failure", "Subtitle download failed", false),
+			},
+			Parse: parseJellyfin,
+		},
+		{
+			Type: "tautulli", Label: "Tautulli", Group: "Media monitoring", Webhook: true,
 			Fields: []FieldDef{
 				{Key: "users", Label: "Only these users", Kind: "text", Help: "Optional comma-separated usernames. Blank means everyone."},
 			},
