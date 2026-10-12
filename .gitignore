@@ -1,0 +1,7 @@
+data/
+*.exe
+/notified
+*.db
+*.db-shm
+*.db-wal
+*.exe~

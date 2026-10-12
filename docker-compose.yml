@@ -1,0 +1,17 @@
+services:
+  notified:
+    build: .
+    image: notified:latest
+    container_name: notified
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - TZ=America/New_York
+    volumes:
+      - ./data:/data
+      # Optional: lets the "Docker containers" integration watch containers.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Optional: lets the "System monitor" integration read disk usage.
+      # Add more mounts (e.g. /mnt/media:/mnt/media:ro) for other disks.
+      - /:/host:ro
