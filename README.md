@@ -48,9 +48,9 @@ Releases are tagged `vMAJOR.MINOR.PATCH`. Each release publishes `ghcr.io/tet0r/
 `:X.Y` and `:latest`; every push to `main` publishes `:edge`. Pin a tag in the compose file if you
 want to control when you upgrade.
 
-Notified checks GitHub for a newer release every 6 hours, shows a notice in the sidebar, and can
-announce it in a Discord channel of your choice (**Settings → Updates**). The check only reads the
-public releases API and can be switched off there. Update with:
+Notified checks GitHub for a newer release every 6 hours and shows a notice in the sidebar and under
+**Settings → Updates**. Update notices stay in the app; they are never sent to Discord. The check
+only reads the public releases API and can be switched off there. Update with:
 
 ```bash
 docker compose pull && docker compose up -d

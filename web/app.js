@@ -639,9 +639,6 @@ function updatesCard() {
   const u = state.update;
   const s = state.settings;
   const enabled = h('input', { type: 'checkbox', checked: s.update_check !== 'false' });
-  const channel = h('select', {},
-    h('option', { value: 0 }, 'Do not notify'),
-    state.channels.map((c) => h('option', { value: c.id, selected: String(c.id) === s.update_channel_id }, c.name)));
   const status = u.update_available
     ? h('span', { class: 'badge warn' }, 'update available')
     : (u.latest ? h('span', { class: 'badge ok' }, 'up to date') : h('span', { class: 'badge' }, 'unknown'));
@@ -655,11 +652,12 @@ function updatesCard() {
     u.error ? h('div', { class: 'error' }, u.error) : null,
     u.update_available ? h('div', { class: 'setup' }, 'To update, run on your Docker host:\ndocker compose pull && docker compose up -d') : null,
     h('label', { class: 'check' }, enabled, 'Check GitHub for new releases every 6 hours'),
-    field('Announce new versions in', channel, 'Sends one Discord message per new release.'),
+    h('div', { class: 'help' }, 'New versions are shown here and in the sidebar. Nothing is sent to Discord.'),
+    h('div', {}, ' '),
     h('div', { class: 'row' },
       h('button', {
         class: 'btn primary', onclick: (e) => busy(e.target, async () => {
-          state.settings = await api('PUT', '/settings', { update_check: String(enabled.checked), update_channel_id: channel.value });
+          state.settings = await api('PUT', '/settings', { update_check: String(enabled.checked) });
           toast('Update settings saved');
         }),
       }, 'Save'),

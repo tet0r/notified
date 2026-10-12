@@ -85,8 +85,8 @@ func (a *App) updateInfo() updateInfo {
 	}
 }
 
-// checkForUpdate asks GitHub for the latest release, stores the result and
-// sends a Discord notification the first time a newer version is seen.
+// checkForUpdate asks GitHub for the latest release and stores the result
+// for the web UI. Updates are only ever shown in the app.
 func (a *App) checkForUpdate(ctx context.Context) error {
 	err := a.fetchLatestRelease(ctx)
 	a.setSetting("update_checked", strconv.FormatInt(time.Now().Unix(), 10))
@@ -95,7 +95,6 @@ func (a *App) checkForUpdate(ctx context.Context) error {
 		return err
 	}
 	a.setSetting("update_error", "")
-	a.notifyUpdate()
 	return nil
 }
 
@@ -140,32 +139,6 @@ func (a *App) fetchLatestRelease(ctx context.Context) error {
 	a.setSetting("update_url", rel.HTMLURL)
 	a.setSetting("update_notes", trunc(strings.TrimSpace(rel.Body), 1500))
 	return nil
-}
-
-// notifyUpdate posts to the configured channel once per new version.
-func (a *App) notifyUpdate() {
-	info := a.updateInfo()
-	if !info.Available || a.setting("update_notified") == info.Latest {
-		return
-	}
-	chID, _ := strconv.ParseInt(a.setting("update_channel_id"), 10, 64)
-	if chID == 0 {
-		return
-	}
-	name := a.setting("instance_name")
-	e := Embed{
-		Title:       name + " " + info.Latest + " is available",
-		URL:         info.URL,
-		Color:       colorBlue,
-		Description: trunc(info.Notes, 1000),
-		Footer:      &EmbedFooter{Text: name},
-	}
-	e.Add("Installed", info.Current, true)
-	e.Add("Latest", info.Latest, true)
-	e.Add("How to update", "`docker compose pull && docker compose up -d`", false)
-	if _, err := a.deliver(0, name, "notified", "update", chID, e, nil); err == nil {
-		a.setSetting("update_notified", info.Latest)
-	}
 }
 
 func (a *App) updateLoop(ctx context.Context) {
