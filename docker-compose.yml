@@ -1,7 +1,8 @@
 services:
   notified:
-    build: .
-    image: notified:latest
+    image: ghcr.io/tet0r/notified:latest
+    # To build from source instead, comment out the line above and use:
+    # build: .
     container_name: notified
     restart: unless-stopped
     ports:

@@ -1,9 +1,13 @@
-FROM golang:1.26-alpine AS build
+# The build stage runs on the builder's own architecture and cross-compiles,
+# so multi-arch images don't compile under emulation.
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
+ARG TARGETOS
+ARG TARGETARCH
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/notified .
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/notified .
 
 FROM alpine:3.22
 RUN apk add --no-cache ca-certificates tzdata

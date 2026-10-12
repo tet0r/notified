@@ -23,11 +23,15 @@ The History page keeps what was received and sent, shows the raw payload, and ca
 
 ## Run it
 
+Copy [docker-compose.yml](docker-compose.yml) to your Docker host, then:
+
 ```bash
-git clone https://github.com/tet0r/notified.git
-cd notified
-docker compose up -d --build
+docker compose up -d
 ```
+
+This pulls `ghcr.io/tet0r/notified:latest` (amd64 and arm64), which CI publishes from `main`.
+Update later with `docker compose pull && docker compose up -d`. To build from source instead,
+clone the repo, switch the compose file to `build: .` and run `docker compose up -d --build`.
 
 Open `http://<host>:8080` and create the admin account. Then:
 
