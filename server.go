@@ -64,7 +64,12 @@ func (a *App) routes() http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "no-referrer")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' https: data:; style-src 'self'; script-src 'self'; frame-ancestors 'none'")
+		csp := "default-src 'self'; img-src 'self' https: data:; style-src 'self'; script-src 'self'; frame-ancestors 'none'"
+		if strings.HasPrefix(r.URL.Path, "/icons/") {
+			// Icon SVGs carry their own <style> blocks; allow those and nothing else.
+			csp = "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'"
+		}
+		w.Header().Set("Content-Security-Policy", csp)
 		w.Header().Set("Cache-Control", "no-cache")
 		static.ServeHTTP(w, r)
 	})

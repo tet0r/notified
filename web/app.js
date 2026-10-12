@@ -64,15 +64,18 @@ const channelName = (id) => (state.channels.find((c) => c.id === id) || {}).name
 const baseURL = () => (state.settings.base_url || location.origin).replace(/\/+$/, '');
 const hookURL = (token) => baseURL() + '/api/v1/hook/' + token;
 
+// tile shows the integration's icon from web/icons/<type>.svg, falling back
+// to its initials if a type has no icon file.
 function tile(type) {
-  const colors = {
-    sonarr: '#35c5f4', radarr: '#e0a82e', lidarr: '#2a9d5c', readarr: '#b5403a', prowlarr: '#e66001',
-    plex: '#cc7b19', tautulli: '#d9902f', seerr: '#6366f1', overseerr: '#7c5cf6', jellyseerr: '#9d4edd',
-    qbittorrent: '#3b82c4', sabnzbd: '#d4a514', nzbget: '#3aa655', nzbhydra2: '#c2571a', system: '#4b5d7a', docker: '#1d91e6', healthcheck: '#2e9d74',
-  };
   const def = typeDef(type);
-  const t = h('div', { class: 'tile' }, (def ? def.label : type).slice(0, 2));
-  t.style.background = colors[type] || '#5865f2';
+  // Artwork with black lettering needs a light plate to stay readable in the dark theme.
+  const t = h('div', { class: 'tile' + (type === 'nzbhydra2' ? ' plate' : '') });
+  const img = h('img', { src: 'icons/' + encodeURIComponent(type) + '.svg', alt: '', loading: 'lazy' });
+  img.addEventListener('error', () => {
+    t.classList.add('letters');
+    t.replaceChildren((def ? def.label : type).slice(0, 2));
+  });
+  t.append(img);
   return t;
 }
 
