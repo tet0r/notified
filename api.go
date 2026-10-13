@@ -533,7 +533,7 @@ func (a *App) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 // ---- settings ----
 
-var editableSettings = []string{"instance_name", "bot_name", "avatar_url", "base_url", "retention", "update_check"}
+var editableSettings = []string{"instance_name", "bot_name", "avatar_url", "base_url", "retention", "update_check", "overview_enabled", "overview_time", "overview_channel_id"}
 
 func (a *App) handleSettingsGet(w http.ResponseWriter, r *http.Request) {
 	out := map[string]string{"admin_user": a.setting("admin_user")}
@@ -568,8 +568,18 @@ func (a *App) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 				httpError(w, http.StatusBadRequest, "history size must be between 100 and 100000")
 				return
 			}
-		case "update_check":
+		case "update_check", "overview_enabled":
 			v = strconv.FormatBool(v == "true")
+		case "overview_channel_id":
+			n, _ := strconv.ParseInt(v, 10, 64)
+			v = strconv.FormatInt(n, 10)
+		case "overview_time":
+			h, m, ok := parseClock(v)
+			if !ok {
+				httpError(w, http.StatusBadRequest, "the overview time must look like 00:00 (24-hour)")
+				return
+			}
+			v = fmt.Sprintf("%02d:%02d", h, m)
 		}
 		if err := a.setSetting(k, v); err != nil {
 			httpError(w, http.StatusInternalServerError, err.Error())

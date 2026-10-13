@@ -82,12 +82,15 @@ func openDB(path string) (*sql.DB, error) {
 // ---- settings ----
 
 var settingDefaults = map[string]string{
-	"instance_name": "Notified",
-	"bot_name":      "Notified",
-	"avatar_url":    "",
-	"base_url":      "",
-	"retention":     "2000",
-	"update_check":  "true",
+	"instance_name":       "Notified",
+	"bot_name":            "Notified",
+	"avatar_url":          "",
+	"base_url":            "",
+	"retention":           "2000",
+	"update_check":        "true",
+	"overview_enabled":    "true",
+	"overview_time":       "00:00",
+	"overview_channel_id": "0",
 }
 
 func (a *App) setting(key string) string {

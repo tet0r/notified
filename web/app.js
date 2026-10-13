@@ -791,8 +791,37 @@ async function settingsPage() {
             toast('Password changed');
           }),
         }, 'Change password')),
+      overviewCard(),
       updatesCard(),
       appearanceCard()));
+}
+
+function overviewCard() {
+  const s = state.settings;
+  const enabled = h('input', { type: 'checkbox', checked: s.overview_enabled !== 'false' });
+  const time = h('input', { type: 'time', value: s.overview_time || '00:00' });
+  const channel = h('select', {},
+    h('option', { value: 0 }, state.channels.length ? 'First channel (' + state.channels.slice().sort((a, b) => a.id - b.id)[0].name + ')' : 'No channels yet'),
+    state.channels.map((c) => h('option', { value: c.id, selected: String(c.id) === s.overview_channel_id }, c.name)));
+  const save = async () => {
+    state.settings = await api('PUT', '/settings', {
+      overview_enabled: String(enabled.checked), overview_time: time.value || '00:00', overview_channel_id: channel.value,
+    });
+  };
+  return h('div', { class: 'card' }, h('h2', {}, 'Daily overview'),
+    h('label', { class: 'check' }, enabled, 'Send a summary of the previous 24 hours every day'),
+    h('div', { class: 'grid two' },
+      field('Time', time, 'Uses the server\'s timezone (the TZ setting in compose).'),
+      field('Channel', channel)),
+    h('div', { class: 'row' },
+      h('button', { class: 'btn primary', onclick: (e) => busy(e.target, async () => { await save(); toast('Overview settings saved'); }) }, 'Save'),
+      h('button', {
+        class: 'btn', onclick: (e) => busy(e.target, async () => {
+          await save();
+          await api('POST', '/overview/send');
+          toast('Overview of the last 24 hours sent');
+        }),
+      }, 'Send one now')));
 }
 
 function updatesCard() {

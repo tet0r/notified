@@ -46,6 +46,14 @@ Open `http://<host>:8080` and create the admin account. Then:
 3. **Settings** → set **Base URL** to the address your apps use to reach Notified (for example
    `http://notified:8080` on a shared Docker network) so the displayed webhook URLs are correct.
 
+### Daily overview
+
+Once a day (midnight by default) Notified posts a summary of the previous 24 hours: how many
+notifications were sent, the busiest integrations and events, anything that failed to deliver,
+container updates still waiting, and integrations currently reporting errors. Change the time and
+channel, switch it off, or send one immediately under **Settings → Daily overview**. The time
+follows the container's `TZ` setting.
+
 ### Pictures in notifications
 
 Every notification carries a picture. Discord can only show images it can download itself, so:

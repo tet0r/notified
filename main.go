@@ -65,6 +65,7 @@ func main() {
 	go app.scheduler(ctx)
 	go app.janitor(ctx)
 	go app.updateLoop(ctx)
+	go app.overviewLoop(ctx)
 
 	srv := &http.Server{
 		Addr:              ":" + port,
