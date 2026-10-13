@@ -686,11 +686,11 @@ async function containerUpdatesPage() {
         const row = h('tr', {},
           h('td', {}, h('b', {}, it.name), it.stack ? h('div', { class: 'dim' }, 'stack: ' + it.stack) : null),
           h('td', { class: 'mono' }, it.image),
-          h('td', { class: 'dim' }, it.env_name),
+          h('td', { class: 'dim' }, it.env_name === g.integration_name ? '' : it.env_name),
           h('td', { class: 'nowrap' }, h('div', { class: 'row end' }, ignoreBtn, btn)));
         ignoreBtn.addEventListener('click', async () => {
           if (working) return toast('An update is still running', true);
-          if (!confirm('Ignore "' + it.name + '"? Notified will stop checking it for updates. You can unignore it in the Portainer integration.')) return;
+          if (!confirm('Ignore "' + it.name + '"? Notified will stop checking it for updates. You can unignore it in the integration\'s settings.')) return;
           try {
             await api('POST', '/integrations/' + g.integration_id + '/ignore', { name: it.name, ignore: true });
             g.items = g.items.filter((x) => x !== it);
@@ -715,7 +715,7 @@ async function containerUpdatesPage() {
         h('h3', {}, g.integration_name),
         h('div', { class: 'card table-wrap' },
           rows.length
-            ? h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Container'), h('th', {}, 'Image'), h('th', {}, 'Environment'), h('th', {}))), h('tbody', {}, rows))
+            ? h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Container'), h('th', {}, 'Image'), h('th', {}, g.items.some((it) => it.env_name !== g.integration_name) ? 'Environment' : ''), h('th', {}))), h('tbody', {}, rows))
             : h('div', { class: 'empty' }, g.checked_at ? 'Everything checked is up to date.' : 'Not checked yet. Press "Check now".')),
         h('div', { class: 'help' }, g.checked_at
           ? 'Checked ' + ago(g.checked_at) + ': ' + g.checked + ' containers compared with their registry' + (skipped.length ? '; skipped ' + skipped.join(', ') : '') + '.'
@@ -725,7 +725,7 @@ async function containerUpdatesPage() {
     });
 
     setMain(
-      pageHead('Container updates', 'Containers whose image tag has a newer build in the registry. Updating pulls the image and recreates the container through Portainer.',
+      pageHead('Container updates', 'Containers whose image tag has a newer build in the registry. Updating pulls the image and recreates the container with the same settings.',
         total > 1 ? h('button', {
           class: 'btn', onclick: async (e) => {
             if (working) return toast('Another update is still running', true);
@@ -745,7 +745,7 @@ async function containerUpdatesPage() {
           }),
         }, 'Check now') : null),
       groups.length ? sections : h('div', { class: 'card empty' },
-        'Add a Portainer integration under ', h('a', { href: '#integrations' }, 'Integrations'), ' to see container updates here.'));
+        'Add a Portainer or Docker updates integration under ', h('a', { href: '#integrations' }, 'Integrations'), ' to see container updates here.'));
   };
   state.containerUpdates = await api('GET', '/container-updates');
   draw();

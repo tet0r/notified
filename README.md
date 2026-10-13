@@ -21,6 +21,7 @@ delivered to Discord as rich embeds. One small container, one SQLite file, no ex
 | System | System monitor | Polling | CPU, memory and disk thresholds, periodic snapshot |
 | System | Docker containers | Polling (Docker socket) | Container stopped, started, unhealthy, healthy |
 | System | Portainer | Polling (Portainer API) | Container update available; one-click update from the web UI; update succeeded or failed |
+| System | Docker updates | Polling (Docker API, e.g. a socket proxy) | Same as Portainer, for Docker hosts without it such as OpenMediaVault Compose |
 | System | Service check | Polling | HTTP or TCP target down / recovered |
 
 Every event can be switched on or off and routed to its own Discord channel per integration.
@@ -86,6 +87,39 @@ container with the same settings.
 - The Discord notice links to the page; the update itself always needs a click in the web UI.
 - If an update fails partway, check the container in Portainer: it can be left stopped or renamed
   with an `-old` suffix.
+
+### Container updates without Portainer (OpenMediaVault and others)
+
+The **Docker updates** integration does the same job by talking to a Docker host directly, and
+performs the pull-and-recreate itself. On that host, run a socket proxy:
+
+```yaml
+services:
+  dockerproxy:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: dockerproxy
+    restart: unless-stopped
+    environment:
+      - CONTAINERS=1
+      - IMAGES=1
+      - NETWORKS=1
+      - DISTRIBUTION=1
+      - POST=1
+    ports:
+      - "2375:2375"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+```
+
+Then set the integration's address to `http://that-host:2375`.
+
+- **The proxy has no login.** Anything that can reach port 2375 can control that host's
+  containers. Keep it on your LAN and firewall the port to Notified's address if you can.
+- Updating keeps the old container (renamed `name-old`) until the new one has started, and puts it
+  back if creating or starting the new one fails.
+- Only public images can be checked and pulled. Data in anonymous volumes is not carried over to the
+  new container; named volumes and bind mounts are.
+- Never offered: Notified itself, the socket proxy, swarm services, digest-pinned and local images.
 
 ### Compose notes
 

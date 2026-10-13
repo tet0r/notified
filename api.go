@@ -287,7 +287,7 @@ func (a *App) containerLists(in *Integration) containerLists {
 		}
 	}
 	switch in.Type {
-	case "portainer":
+	case "portainer", "dockerhost":
 		for _, n := range a.portainerReport(in.ID).Names {
 			add(n)
 		}
@@ -308,7 +308,7 @@ func (a *App) containerLists(in *Integration) containerLists {
 
 func (a *App) ignoreCapable(w http.ResponseWriter, r *http.Request) *Integration {
 	in, err := a.getIntegration(pathID(r))
-	if err != nil || (in.Type != "portainer" && in.Type != "docker") {
+	if err != nil || (!isUpdateType(in.Type) && in.Type != "docker") {
 		httpError(w, http.StatusNotFound, "integration not found")
 		return nil
 	}
@@ -354,7 +354,7 @@ func (a *App) handleIntegrationIgnore(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if body.Ignore && in.Type == "portainer" {
+	if body.Ignore && isUpdateType(in.Type) {
 		// Take it off the pending list now rather than at the next check.
 		report := a.portainerReport(in.ID)
 		kept := report.Items[:0]

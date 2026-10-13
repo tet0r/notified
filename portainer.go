@@ -11,9 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path"
 	"regexp"
-	"sort"
 	"strings"
 	"time"
 )
@@ -123,35 +121,9 @@ func (p *portainer) call(ctx context.Context, method, apiPath string, body, out 
 	return nil
 }
 
-// Pacing for registry lookups; variables so tests can shorten them.
-var (
-	registryGap     = 300 * time.Millisecond
-	registryBackoff = 2 * time.Second
-)
-
-// registryLookup asks the Docker engine (through Portainer) for an image's
-// current registry digest. Registries throttle bursts of these requests with
-// HTTP 429, so lookups are spaced out and a throttled one is retried.
+// registryLookup is one paced, retried registry lookup through Portainer.
 func (p *portainer) registryLookup(ctx context.Context, apiPath string, out any) error {
-	var err error
-	for attempt := 0; attempt < 4; attempt++ {
-		// A short gap before every lookup, growing after each throttled attempt.
-		wait := registryGap + time.Duration(attempt*attempt)*registryBackoff
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(wait):
-		}
-		if err = p.call(ctx, http.MethodGet, apiPath, nil, out); err == nil || !isThrottled(err) {
-			return err
-		}
-	}
-	return err
-}
-
-func isThrottled(err error) bool {
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "http 429") || strings.Contains(msg, "toomanyrequests") || strings.Contains(msg, "too many requests")
+	return retryThrottled(ctx, func() error { return p.call(ctx, http.MethodGet, apiPath, nil, out) })
 }
 
 type pendingUpdate struct {
@@ -230,8 +202,7 @@ func digestOf(repoDigest string) string {
 	return repoDigest
 }
 
-// pollPortainer compares every eligible running container's image with the
-// registry and records the ones that are behind.
+// pollPortainer checks every Docker environment Portainer knows about.
 func pollPortainer(ctx context.Context, a *App, in *Integration) error {
 	p, err := newPortainer(in, 60*time.Second)
 	if err != nil {
@@ -275,132 +246,13 @@ func pollPortainer(ctx context.Context, a *App, in *Integration) error {
 		for _, s := range stacks {
 			managed[s.Name] = true
 		}
-
-		docker := fmt.Sprintf("/api/endpoints/%d/docker", env.ID)
-		var containers []portainerContainer
-		if err := p.call(ctx, http.MethodGet, docker+"/containers/json", nil, &containers); err != nil {
-			addErr("%s: could not list containers: %v", env.Name, err)
-			continue
+		prefix := fmt.Sprintf("/api/endpoints/%d/docker", env.ID)
+		call := func(ctx context.Context, method, apiPath string, body, out any) error {
+			return p.call(ctx, method, prefix+apiPath, body, out)
 		}
-
-		localDigests := map[string]map[string]bool{} // image id -> digests
-		remoteDigest := map[string]string{}          // image ref -> digest ("" = lookup failed)
-		for _, c := range containers {
-			if len(c.Names) == 0 {
-				continue
-			}
-			name := strings.TrimPrefix(c.Names[0], "/")
-			project := c.Labels["com.docker.compose.project"]
-			if project != "" && !managed[project] {
-				report.Limited++
-				continue
-			}
-			untouchable := isSelf(c) || c.Labels["com.docker.swarm.service.name"] != ""
-			if !untouchable {
-				report.Names = append(report.Names, name)
-			}
-			skip := untouchable || strings.Contains(c.Image, "@") || strings.HasPrefix(c.Image, "sha256:") || !imageRefRE.MatchString(c.Image)
-			for _, pat := range ignore {
-				if ok, _ := path.Match(pat, name); ok {
-					skip = true
-				}
-			}
-			if skip {
-				report.Ignored++
-				continue
-			}
-
-			local, seen := localDigests[c.ImageID]
-			if !seen {
-				var img struct {
-					RepoDigests []string `json:"RepoDigests"`
-				}
-				local = map[string]bool{}
-				if err := p.call(ctx, http.MethodGet, docker+"/images/"+c.ImageID+"/json", nil, &img); err != nil {
-					addErr("%s: %v", name, err)
-				}
-				for _, d := range img.RepoDigests {
-					local[digestOf(d)] = true
-				}
-				localDigests[c.ImageID] = local
-			}
-			if len(local) == 0 {
-				report.Ignored++ // built locally or never pulled from a registry
-				continue
-			}
-
-			remote, seen := remoteDigest[c.Image]
-			if !seen {
-				var dist struct {
-					Descriptor struct {
-						Digest string `json:"digest"`
-					} `json:"Descriptor"`
-				}
-				if err := p.registryLookup(ctx, docker+"/distribution/"+c.Image+"/json", &dist); err != nil {
-					addErr("%s: could not check %s: %v", name, c.Image, err)
-				}
-				remote = dist.Descriptor.Digest
-				remoteDigest[c.Image] = remote
-			}
-			if remote == "" {
-				continue
-			}
-			report.Checked++
-			if !local[remote] {
-				report.Items = append(report.Items, pendingUpdate{
-					EnvID: env.ID, EnvName: env.Name, ContainerID: c.ID, Name: name,
-					Image: c.Image, Stack: project, Latest: remote,
-				})
-			}
-		}
+		scanContainers(ctx, call, scanOpts{envID: env.ID, envName: env.Name, managed: managed, ignore: ignore}, &report, addErr)
 	}
-	sort.Slice(report.Items, func(i, j int) bool {
-		if report.Items[i].EnvName != report.Items[j].EnvName {
-			return report.Items[i].EnvName < report.Items[j].EnvName
-		}
-		return report.Items[i].Name < report.Items[j].Name
-	})
-	a.savePortainerReport(in.ID, report)
-
-	// Announce each new image build once.
-	active := map[string]bool{}
-	var fresh []pendingUpdate
-	for _, it := range report.Items {
-		k := fmt.Sprintf("u:%d:%s:%s", it.EnvID, it.Name, it.Latest)
-		active[k] = true
-		if _, done := a.stateGet(in.ID, k); !done {
-			fresh = append(fresh, it)
-			a.stateSet(in.ID, k, "1")
-		}
-	}
-	a.statePrune(in.ID, "u:", active)
-	link := ""
-	if base := a.setting("base_url"); base != "" {
-		link = base + "/#updates"
-	}
-	switch {
-	case len(fresh) == 0:
-	case len(fresh) <= 8:
-		// One message per container, so each can show that container's icon.
-		for _, it := range fresh {
-			e := Embed{Title: "Container update available", Color: colorBlue, URL: link, Author: &EmbedAuthor{Name: in.Name}}
-			e.Description = "**" + it.Name + "**\n" + it.Image
-			e.Add("Environment", it.EnvName, true)
-			e.Add("Stack", it.Stack, true)
-			e.Thumb(a.containerIcon(ctx, it.Image, it.Name))
-			a.Dispatch(in, "update_available", e, nil)
-		}
-	default:
-		// Too many for individual messages: send one summary.
-		e := Embed{Color: colorBlue, URL: link, Author: &EmbedAuthor{Name: in.Name}}
-		e.Title = fmt.Sprintf("%d container updates available", len(fresh))
-		var lines []string
-		for _, it := range fresh {
-			lines = append(lines, "• **"+it.Name+"** — "+it.Image)
-		}
-		e.Description = joinLimited(lines, 20)
-		a.Dispatch(in, "update_available", e, nil)
-	}
+	a.finishScan(ctx, in, report)
 	if len(report.Errors) > 0 {
 		return errors.New(report.Errors[0])
 	}
@@ -422,7 +274,7 @@ func (a *App) containerUpdates() ([]containerUpdatesOut, error) {
 	}
 	out := []containerUpdatesOut{}
 	for _, in := range ins {
-		if in.Type == "portainer" && in.Enabled {
+		if isUpdateType(in.Type) && in.Enabled {
 			out = append(out, containerUpdatesOut{in.ID, in.Name, a.portainerReport(in.ID)})
 		}
 	}
@@ -438,7 +290,10 @@ func (a *App) handleContainerUpdates(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-// handleContainerUpdatesCheck re-runs the check for every Portainer integration.
+// isUpdateType reports whether an integration type offers container updates.
+func isUpdateType(typ string) bool { return typ == "portainer" || typ == "dockerhost" }
+
+// handleContainerUpdatesCheck re-runs the check for every update integration.
 func (a *App) handleContainerUpdatesCheck(w http.ResponseWriter, r *http.Request) {
 	ins, err := a.listIntegrations()
 	if err != nil {
@@ -446,7 +301,7 @@ func (a *App) handleContainerUpdatesCheck(w http.ResponseWriter, r *http.Request
 		return
 	}
 	for _, in := range ins {
-		if in.Type == "portainer" && in.Enabled {
+		if isUpdateType(in.Type) && in.Enabled {
 			a.runPoll(r.Context(), in)
 		}
 	}
@@ -466,8 +321,8 @@ func (a *App) handleContainerUpdateApply(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	in, err := a.getIntegration(body.IntegrationID)
-	if err != nil || in.Type != "portainer" || !in.Enabled {
-		httpError(w, http.StatusNotFound, "Portainer integration not found")
+	if err != nil || !isUpdateType(in.Type) || !in.Enabled {
+		httpError(w, http.StatusNotFound, "integration not found")
 		return
 	}
 
@@ -487,30 +342,40 @@ func (a *App) handleContainerUpdateApply(w http.ResponseWriter, r *http.Request)
 	}
 	item := report.Items[idx]
 
-	p, err := newPortainer(in, 20*time.Minute)
-	if err != nil {
-		httpError(w, http.StatusBadRequest, err.Error())
-		return
-	}
 	// Deliberately not tied to the browser request: closing the tab must not
-	// abort Portainer halfway through swapping the container.
+	// abort the swap halfway.
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
-	apiPath := fmt.Sprintf("/api/docker/%d/containers/%s/recreate", item.EnvID, item.ContainerID)
-	err = p.call(ctx, http.MethodPost, apiPath, map[string]bool{"PullImage": true}, nil)
+	note := ""
+	if in.Type == "dockerhost" {
+		var d *dockerHost
+		if d, err = newDockerHost(in, 20*time.Minute); err == nil {
+			note, err = d.recreate(ctx, item.ContainerID)
+			d.c.CloseIdleConnections()
+		}
+	} else {
+		var p *portainer
+		if p, err = newPortainer(in, 20*time.Minute); err == nil {
+			apiPath := fmt.Sprintf("/api/docker/%d/containers/%s/recreate", item.EnvID, item.ContainerID)
+			err = p.call(ctx, http.MethodPost, apiPath, map[string]bool{"PullImage": true}, nil)
+		}
+	}
 
 	e := Embed{Author: &EmbedAuthor{Name: in.Name}, Description: "**" + item.Name + "** — " + item.Image}
 	e.Thumb(a.containerIcon(ctx, item.Image, item.Name))
 	if err != nil {
 		e.Title, e.Color = "Container update failed", colorRed
 		e.Add("Error", trunc(err.Error(), 600), false)
-		e.Add("What to check", "Open the container in Portainer. If the update stopped partway it may be stopped or renamed with an \"-old\" suffix.", false)
+		e.Add("What to check", "Look at the container on its host. If the update stopped partway it may be stopped or renamed with an \"-old\" suffix.", false)
 		a.Dispatch(in, "update_failed", e, nil)
 		httpError(w, http.StatusBadGateway, err.Error())
 		return
 	}
 	e.Title, e.Color = "Container updated", colorGreen
-	e.Add("Environment", item.EnvName, true)
+	if item.EnvName != in.Name {
+		e.Add("Environment", item.EnvName, true)
+	}
+	e.Add("Note", note, false)
 	a.Dispatch(in, "updated", e, nil)
 
 	report.Items = append(report.Items[:idx], report.Items[idx+1:]...)

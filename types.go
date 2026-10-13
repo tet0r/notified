@@ -46,7 +46,7 @@ var typeOrder = []string{
 	"sonarr", "radarr", "lidarr", "readarr", "prowlarr",
 	"plex", "jellyfin", "emby", "tautulli", "seerr", "overseerr", "jellyseerr",
 	"qbittorrent", "sabnzbd", "nzbget", "nzbhydra2",
-	"system", "docker", "portainer", "healthcheck",
+	"system", "docker", "portainer", "dockerhost", "healthcheck",
 }
 
 var typeDefs = map[string]*TypeDef{}
@@ -427,6 +427,24 @@ func buildTypeDefs() []*TypeDef {
 			DefaultInterval: 21600, Poll: pollPortainer,
 		},
 		{
+			Type: "dockerhost", Label: "Docker updates", Group: "System", Poller: true,
+			Fields: []FieldDef{
+				{Key: "url", Label: "Docker address", Kind: "text", Help: "http://host:2375 for a socket proxy on another machine, or unix:///var/run/docker.sock for a mounted socket."},
+				{Key: "interval", Label: "Check interval (seconds)", Kind: "number", Default: "21600", Help: "Each check asks the registry about every image, so keep this at hours, not minutes."},
+				{Key: "ignore", Label: "Ignore containers", Kind: "containers", Help: "Ignored containers are not checked for updates."},
+			},
+			Setup: "For a Docker host without Portainer, such as OpenMediaVault's Compose plugin. Finds running containers whose image tag has a newer build and updates them from the Container updates page: Notified pulls the image and recreates the container with the same settings.\n\n" +
+				"On the Docker host, run a socket proxy and point the address below at it (http://that-host:2375):\n\n" + socketProxyCompose + "\n" +
+				"The proxy has no login: anything that can reach port 2375 can control that host's containers. Keep it on your LAN and, if you can, firewall the port to Notified's address only.\n" +
+				"Always skipped: Notified itself, the socket proxy, swarm services, images pinned to a digest, and locally built images. Only public images can be checked and pulled.",
+			Events: []EventDef{
+				ev("update_available", "Container update available", true),
+				ev("updated", "Container updated from Notified", true),
+				ev("update_failed", "Container update failed", true),
+			},
+			DefaultInterval: 21600, Poll: pollDockerHost,
+		},
+		{
 			Type: "healthcheck", Label: "Service check", Group: "System", Poller: true,
 			Fields: []FieldDef{
 				{Key: "target", Label: "Target", Kind: "text", Help: "An http(s):// URL, or host:port for a TCP check."},
@@ -447,3 +465,21 @@ func buildTypeDefs() []*TypeDef {
 }
 
 const tautulliTemplate = `{"action":"{action}","user":"{user}","title":"{title}","media_type":"{media_type}","library":"{library_name}","player":"{player}","platform":"{platform}","quality":"{quality_profile}","transcode":"{transcode_decision}","progress":"{progress_percent}","streams":"{streams}","user_streams":"{user_streams}","ip":"{ip_address}","poster":"{poster_url}","server":"{server_name}","server_version":"{server_version}","update_version":"{update_version}","tautulli_version":"{tautulli_update_version}","plex_url":"{plex_url}"}`
+
+// socketProxyCompose is the compose file shown in the Docker updates setup.
+const socketProxyCompose = `services:
+  dockerproxy:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: dockerproxy
+    restart: unless-stopped
+    environment:
+      - CONTAINERS=1
+      - IMAGES=1
+      - NETWORKS=1
+      - DISTRIBUTION=1
+      - POST=1
+    ports:
+      - "2375:2375"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+`
