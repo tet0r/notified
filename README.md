@@ -11,6 +11,7 @@ delivered to Discord as rich embeds. One small container, one SQLite file, no ex
 | \*arr Apps | Sonarr, Radarr, Lidarr, Readarr, Prowlarr | Webhook (+ optional queue polling) | Grab, import, upgrade, rename, added, deleted, health, health restored, app update, manual interaction, stuck queue items |
 | Media servers | Plex | Webhook (Plex Pass) | Play, pause, resume, stop, watched, new in library, new device, database backup/corruption |
 | Media servers | Jellyfin | Webhook (Webhook plugin) | Play, stop, new in library, failed sign-ins, user lockouts, failed tasks, plugin changes, restart required |
+| Media servers | Emby | Webhook (Emby Premiere) | Play, pause, resume, stop, new in library, failed sign-ins, update available, restart required, plugin changes |
 | Media monitoring | Tautulli | Webhook | Play, stop, pause, resume, watched, errors, buffering, recently added, server up/down, updates |
 | Requests | Seerr, Overseerr, Jellyseerr | Webhook | Pending, approved, auto-requested, available, declined, failed, issues |
 | Downloaders | qBittorrent | Polling | Stalled downloads, errored torrents |

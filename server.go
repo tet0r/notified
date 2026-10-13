@@ -101,13 +101,13 @@ func (a *App) handleHook(w http.ResponseWriter, r *http.Request) {
 			httpError(w, http.StatusBadRequest, "invalid multipart body")
 			return
 		}
-		raw = []byte(r.FormValue("payload"))
+		raw = []byte(firstNonEmpty(r.FormValue("payload"), r.FormValue("data")))
 	case strings.HasPrefix(ct, "application/x-www-form-urlencoded"):
 		if err := r.ParseForm(); err != nil {
 			httpError(w, http.StatusBadRequest, "invalid form body")
 			return
 		}
-		raw = []byte(r.FormValue("payload"))
+		raw = []byte(firstNonEmpty(r.FormValue("payload"), r.FormValue("data")))
 	default:
 		raw, err = io.ReadAll(r.Body)
 		if err != nil {

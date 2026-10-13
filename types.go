@@ -39,7 +39,7 @@ type TypeDef struct {
 
 var typeOrder = []string{
 	"sonarr", "radarr", "lidarr", "readarr", "prowlarr",
-	"plex", "jellyfin", "tautulli", "seerr", "overseerr", "jellyseerr",
+	"plex", "jellyfin", "emby", "tautulli", "seerr", "overseerr", "jellyseerr",
 	"qbittorrent", "sabnzbd", "nzbget", "nzbhydra2",
 	"system", "docker", "healthcheck",
 }
@@ -228,6 +228,33 @@ func buildTypeDefs() []*TypeDef {
 				ev("subtitle_failure", "Subtitle download failed", false),
 			},
 			Parse: parseJellyfin,
+		},
+		{
+			Type: "emby", Label: "Emby", Group: "Media servers", Webhook: true,
+			Fields: []FieldDef{
+				{Key: "url", Label: "Emby URL", Kind: "text", Help: "Optional. Used to link notifications to the item and show artwork, e.g. https://emby.example.com"},
+				{Key: "users", Label: "Only these users", Kind: "text", Help: "Optional comma-separated Emby usernames for playback events. Blank means everyone."},
+			},
+			Setup: "Emby webhooks need an active Emby Premiere licence.\n" +
+				"In Emby open Settings → Notifications → Add Notification → Webhooks.\n" +
+				"Set the Url to {URL}, keep the request content type as application/json, tick the events you want, then save and send a test notification.",
+			Events: []EventDef{
+				ev("play", "Playback started", true),
+				ev("stop", "Playback stopped", true),
+				ev("pause", "Playback paused", false),
+				ev("resume", "Playback resumed", false),
+				ev("progress", "Playback progress (very frequent)", false),
+				ev("new", "New item added to library", true),
+				ev("item_deleted", "Item removed from library", false),
+				ev("watched", "Marked played or unplayed", false),
+				ev("rate", "Item rated", false),
+				ev("auth_failure", "Failed sign-in or lockout", true),
+				ev("auth_success", "User signed in", false),
+				ev("update_available", "Emby update available", true),
+				ev("restart_required", "Restart required", true),
+				ev("plugin", "Plugin installed, updated or removed", true),
+			},
+			Parse: parseEmby,
 		},
 		{
 			Type: "tautulli", Label: "Tautulli", Group: "Media monitoring", Webhook: true,
