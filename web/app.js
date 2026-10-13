@@ -3,7 +3,7 @@
 // All dynamic content is inserted as text nodes via h(); webhook payloads are
 // untrusted, so nothing in this file assigns innerHTML.
 
-const state = { types: [], channels: [], integrations: [], settings: {}, update: {}, version: '' };
+const state = { types: [], channels: [], integrations: [], settings: {}, update: {}, containerUpdates: [], version: '' };
 const app = document.getElementById('app');
 const modalRoot = document.getElementById('modal-root');
 
@@ -159,10 +159,11 @@ function authScreen(setup) {
 }
 
 async function loadAll() {
-  const [types, channels, integrations, settings, update] = await Promise.all([
+  const [types, channels, integrations, settings, update, containerUpdates] = await Promise.all([
     api('GET', '/types'), api('GET', '/channels'), api('GET', '/integrations'), api('GET', '/settings'), api('GET', '/update'),
+    api('GET', '/container-updates'),
   ]);
-  Object.assign(state, { types, channels, integrations, settings, update });
+  Object.assign(state, { types, channels, integrations, settings, update, containerUpdates });
 }
 
 // ---------- shell / routing ----------
@@ -171,6 +172,7 @@ const pages = {
   dashboard: { label: 'Dashboard', render: dashboardPage },
   integrations: { label: 'Integrations', render: integrationsPage },
   channels: { label: 'Channels', render: channelsPage },
+  updates: { label: 'Container updates', render: containerUpdatesPage },
   history: { label: 'History', render: historyPage },
   settings: { label: 'Settings', render: settingsPage },
 };
@@ -182,6 +184,7 @@ function setMain(...kids) {
 
 function renderShell() {
   navEl = h('nav', { class: 'nav' }, Object.entries(pages).map(([k, p]) => h('a', { href: '#' + k, 'data-page': k }, p.label)));
+  refreshNavCount();
   mainEl = h('main', { class: 'main' });
   app.replaceChildren(h('div', { class: 'shell' },
     h('aside', { class: 'sidebar' },
@@ -195,6 +198,14 @@ function renderShell() {
       h('div', { class: 'foot' }, h('span', {}, verLabel(state.version)), '·', themeButton(), '·',
         h('button', { class: 'linkbtn', onclick: async () => { try { await api('POST', '/logout'); } catch (e) { /* already signed out */ } boot(); } }, 'Sign out'))),
     mainEl));
+}
+
+// Shows how many container updates are waiting next to the nav item.
+function refreshNavCount() {
+  if (!navEl) return;
+  const link = [...navEl.children].find((a) => a.dataset.page === 'updates');
+  const n = state.containerUpdates.reduce((sum, g) => sum + g.items.length, 0);
+  link.replaceChildren(pages.updates.label, n ? h('span', { class: 'count' }, n) : null);
 }
 
 function route() {
@@ -592,6 +603,95 @@ function integrationModal(existing, newType) {
     h('button', { class: 'btn', onclick: close }, 'Cancel'),
     h('button', { class: 'btn primary', onclick: (e) => busy(e.target, () => save(close, !existing && def.webhook)) }, existing ? 'Save' : 'Create'),
   ], true);
+}
+
+// ---------- container updates (Portainer) ----------
+
+async function containerUpdatesPage() {
+  const draw = () => {
+    refreshNavCount();
+    const groups = state.containerUpdates;
+    const total = groups.reduce((sum, g) => sum + g.items.length, 0);
+    let working = false;
+
+    // Recreates one container via Portainer and removes its row on success.
+    const apply = async (g, it, btn, row) => {
+      btn.disabled = true;
+      btn.textContent = 'Updating…';
+      try {
+        await api('POST', '/container-updates/apply', { integration_id: g.integration_id, env_id: it.env_id, container_id: it.container_id });
+        g.items = g.items.filter((x) => x !== it);
+        row.remove();
+        refreshNavCount();
+        toast(it.name + ' updated');
+        return true;
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = 'Retry';
+        toast(it.name + ': ' + e.message, true);
+        return false;
+      }
+    };
+
+    const sections = groups.map((g) => {
+      const rows = g.items.map((it) => {
+        const btn = h('button', { class: 'btn small primary' }, 'Update');
+        const row = h('tr', {},
+          h('td', {}, h('b', {}, it.name), it.stack ? h('div', { class: 'dim' }, 'stack: ' + it.stack) : null),
+          h('td', { class: 'mono' }, it.image),
+          h('td', { class: 'dim' }, it.env_name),
+          h('td', { class: 'nowrap' }, h('div', { class: 'row end' }, btn)));
+        btn.addEventListener('click', async () => {
+          if (working) return toast('Another update is still running', true);
+          working = true;
+          await apply(g, it, btn, row);
+          working = false;
+          if (!g.items.length) draw();
+        });
+        row.update = () => apply(g, it, btn, row);
+        return row;
+      });
+      const skipped = [];
+      if (g.limited) skipped.push(g.limited + ' in stacks with limited control');
+      if (g.ignored) skipped.push(g.ignored + ' ignored');
+      return [
+        h('h3', {}, g.integration_name),
+        h('div', { class: 'card table-wrap' },
+          rows.length
+            ? h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Container'), h('th', {}, 'Image'), h('th', {}, 'Environment'), h('th', {}))), h('tbody', {}, rows))
+            : h('div', { class: 'empty' }, g.checked_at ? 'Everything checked is up to date.' : 'Not checked yet. Press "Check now".')),
+        h('div', { class: 'help' }, g.checked_at
+          ? 'Checked ' + ago(g.checked_at) + ': ' + g.checked + ' containers compared with their registry' + (skipped.length ? '; skipped ' + skipped.join(', ') : '') + '.'
+          : ''),
+        g.errors.map((e) => h('div', { class: 'error' }, e)),
+      ];
+    });
+
+    setMain(
+      pageHead('Container updates', 'Containers whose image tag has a newer build in the registry. Updating pulls the image and recreates the container through Portainer.',
+        total > 1 ? h('button', {
+          class: 'btn', onclick: async (e) => {
+            if (working) return toast('Another update is still running', true);
+            if (!confirm('Update all ' + total + ' containers now, one after another?')) return;
+            working = true;
+            e.target.disabled = true;
+            for (const row of mainEl.querySelectorAll('tbody tr')) await row.update();
+            working = false;
+            draw();
+          },
+        }, 'Update all') : null,
+        groups.length ? h('button', {
+          class: 'btn primary', onclick: (e) => busy(e.target, async () => {
+            state.containerUpdates = await api('POST', '/container-updates/check');
+            draw();
+            toast('Check finished');
+          }),
+        }, 'Check now') : null),
+      groups.length ? sections : h('div', { class: 'card empty' },
+        'Add a Portainer integration under ', h('a', { href: '#integrations' }, 'Integrations'), ' to see container updates here.'));
+  };
+  state.containerUpdates = await api('GET', '/container-updates');
+  draw();
 }
 
 // ---------- settings ----------

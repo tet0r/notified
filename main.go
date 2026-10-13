@@ -21,6 +21,9 @@ type App struct {
 	http  *http.Client
 	sendQ chan sendJob
 
+	// applyMu serialises container updates so two clicks never overlap.
+	applyMu sync.Mutex
+
 	pollMu sync.Mutex
 	polls  map[int64]*pollStatus
 

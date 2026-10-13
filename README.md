@@ -20,6 +20,7 @@ delivered to Discord as rich embeds. One small container, one SQLite file, no ex
 | Indexers | NZBHydra 2 | Polling | Indexer disabled after errors, indexer re-enabled |
 | System | System monitor | Polling | CPU, memory and disk thresholds, periodic snapshot |
 | System | Docker containers | Polling (Docker socket) | Container stopped, started, unhealthy, healthy |
+| System | Portainer | Polling (Portainer API) | Container update available; one-click update from the web UI; update succeeded or failed |
 | System | Service check | Polling | HTTP or TCP target down / recovered |
 
 Every event can be switched on or off and routed to its own Discord channel per integration.
@@ -57,6 +58,21 @@ only reads the public releases API and can be switched off there. Update with:
 ```bash
 docker compose pull && docker compose up -d
 ```
+
+### Container updates (Portainer)
+
+Add a **Portainer** integration with your Portainer URL and an administrator access token. Notified
+then compares each running container's image with the registry and lists the ones that are behind
+under **Container updates**, where **Update** asks Portainer to pull the image and recreate the
+container with the same settings.
+
+- It detects a newer build of the *same tag* (for example `latest` being re-pushed). It does not
+  tell you that `4.1` exists when you run `4.0`.
+- Never offered: Notified itself, containers in stacks created outside Portainer (shown as
+  *Limited* control in Portainer), swarm services, images pinned to a digest, locally built images.
+- The Discord notice links to the page; the update itself always needs a click in the web UI.
+- If an update fails partway, check the container in Portainer: it can be left stopped or renamed
+  with an `-old` suffix.
 
 ### Compose notes
 

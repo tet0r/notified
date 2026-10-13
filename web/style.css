@@ -73,6 +73,7 @@ pre {
 }
 .nav a:hover { background: var(--panel-2); color: var(--text); text-decoration: none; }
 .nav a.active { background: var(--accent); color: #fff; }
+.nav .count { float: right; min-width: 20px; padding: 0 6px; border-radius: 99px; font-size: 12px; text-align: center; background: var(--amber); color: #1a1d27; }
 .sidebar .spacer { flex: 1; }
 .sidebar .foot { color: var(--muted); font-size: 12px; padding: 0 10px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .linkbtn { background: none; border: 0; padding: 0; font: inherit; color: var(--link); cursor: pointer; }

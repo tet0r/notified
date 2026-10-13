@@ -41,7 +41,7 @@ var typeOrder = []string{
 	"sonarr", "radarr", "lidarr", "readarr", "prowlarr",
 	"plex", "jellyfin", "emby", "tautulli", "seerr", "overseerr", "jellyseerr",
 	"qbittorrent", "sabnzbd", "nzbget", "nzbhydra2",
-	"system", "docker", "healthcheck",
+	"system", "docker", "portainer", "healthcheck",
 }
 
 var typeDefs = map[string]*TypeDef{}
@@ -401,6 +401,25 @@ func buildTypeDefs() []*TypeDef {
 				ev("container_healthy", "Container healthy again", true),
 			},
 			DefaultInterval: 30, Poll: pollDocker,
+		},
+		{
+			Type: "portainer", Label: "Portainer", Group: "System", Poller: true,
+			Fields: []FieldDef{
+				{Key: "url", Label: "Portainer URL", Kind: "text", Help: "e.g. https://portainer:9443"},
+				{Key: "apikey", Label: "Access token", Kind: "password", Help: "Portainer → My account → Access tokens → Add access token, from an administrator account."},
+				{Key: "insecure_tls", Label: "Skip TLS certificate verification", Kind: "bool", Help: "Needed for Portainer's default self-signed certificate."},
+				{Key: "interval", Label: "Check interval (seconds)", Kind: "number", Default: "21600", Help: "Each check asks the registry about every image, so keep this at hours, not minutes."},
+				{Key: "ignore", Label: "Ignore containers", Kind: "text", Help: "Comma-separated names; * wildcards allowed."},
+			},
+			Setup: "Finds running containers whose image tag has a newer build in the registry, and lets you update them from the Container updates page with one click.\n" +
+				"Always skipped: Notified itself, containers in stacks created outside Portainer (shown as Limited control in Portainer), swarm services, images pinned to a digest, and locally built images.\n" +
+				"An update asks Portainer to pull the image and recreate the container with the same settings. The access token can recreate any container, so protect your Notified login.",
+			Events: []EventDef{
+				ev("update_available", "Container update available", true),
+				ev("updated", "Container updated from Notified", true),
+				ev("update_failed", "Container update failed", true),
+			},
+			DefaultInterval: 21600, Poll: pollPortainer,
 		},
 		{
 			Type: "healthcheck", Label: "Service check", Group: "System", Poller: true,
