@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/logo.svg" width="96" alt="Notified logo"></p>
+
 # Notified
 
 A self-hosted notification hub for a media server stack, inspired by Notifiarr. Your apps send
