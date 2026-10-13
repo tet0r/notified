@@ -3,7 +3,9 @@ package main
 import "context"
 
 // FieldDef describes one configuration input shown in the web UI.
-// Kind is one of: text, password, number, bool, textarea.
+// Kind is one of: text, password, number, bool, textarea, containers.
+// "containers" is a comma-separated ignore list edited with a picker of
+// detected container names.
 type FieldDef struct {
 	Key     string `json:"key"`
 	Label   string `json:"label"`
@@ -390,7 +392,7 @@ func buildTypeDefs() []*TypeDef {
 			Fields: []FieldDef{
 				{Key: "socket", Label: "Docker socket", Kind: "text", Default: "/var/run/docker.sock"},
 				{Key: "interval", Label: "Check interval (seconds)", Kind: "number", Default: "30"},
-				{Key: "ignore", Label: "Ignore containers", Kind: "text", Help: "Comma-separated names; * wildcards allowed."},
+				{Key: "ignore", Label: "Ignore containers", Kind: "containers", Help: "Ignored containers are not reported."},
 			},
 			Setup: "Reports containers that stop, start or change health. Requires the Docker socket to be mounted " +
 				"(/var/run/docker.sock:/var/run/docker.sock:ro in the compose file).",
@@ -409,7 +411,7 @@ func buildTypeDefs() []*TypeDef {
 				{Key: "apikey", Label: "Access token", Kind: "password", Help: "Portainer → My account → Access tokens → Add access token, from an administrator account."},
 				{Key: "insecure_tls", Label: "Skip TLS certificate verification", Kind: "bool", Help: "Needed for Portainer's default self-signed certificate."},
 				{Key: "interval", Label: "Check interval (seconds)", Kind: "number", Default: "21600", Help: "Each check asks the registry about every image, so keep this at hours, not minutes."},
-				{Key: "ignore", Label: "Ignore containers", Kind: "text", Help: "Comma-separated names; * wildcards allowed."},
+				{Key: "ignore", Label: "Ignore containers", Kind: "containers", Help: "Ignored containers are not checked for updates."},
 			},
 			Setup: "Finds running containers whose image tag has a newer build in the registry, and lets you update them from the Container updates page with one click.\n" +
 				"Always skipped: Notified itself, containers in stacks created outside Portainer (shown as Limited control in Portainer), swarm services, images pinned to a digest, and locally built images.\n" +

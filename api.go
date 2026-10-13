@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -262,6 +263,110 @@ func (a *App) handleIntegrationTest(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// ---- container ignore lists (Docker and Portainer integrations) ----
+
+type containerLists struct {
+	Detected []string `json:"detected"`
+	Ignored  []string `json:"ignored"`
+}
+
+// containerLists returns the containers an integration has seen and the ones
+// the user has chosen to ignore.
+func (a *App) containerLists(in *Integration) containerLists {
+	out := containerLists{Detected: []string{}, Ignored: splitList(in.Config["ignore"])}
+	if out.Ignored == nil {
+		out.Ignored = []string{}
+	}
+	seen := map[string]bool{}
+	add := func(name string) {
+		if name != "" && !seen[name] {
+			seen[name] = true
+			out.Detected = append(out.Detected, name)
+		}
+	}
+	switch in.Type {
+	case "portainer":
+		for _, n := range a.portainerReport(in.ID).Names {
+			add(n)
+		}
+	case "docker":
+		var known map[string]containerState
+		if v, ok := a.stateGet(in.ID, "containers"); ok {
+			json.Unmarshal([]byte(v), &known)
+		}
+		for n := range known {
+			add(n)
+		}
+	}
+	sort.Slice(out.Detected, func(i, j int) bool {
+		return strings.ToLower(out.Detected[i]) < strings.ToLower(out.Detected[j])
+	})
+	return out
+}
+
+func (a *App) ignoreCapable(w http.ResponseWriter, r *http.Request) *Integration {
+	in, err := a.getIntegration(pathID(r))
+	if err != nil || (in.Type != "portainer" && in.Type != "docker") {
+		httpError(w, http.StatusNotFound, "integration not found")
+		return nil
+	}
+	return in
+}
+
+func (a *App) handleIntegrationContainers(w http.ResponseWriter, r *http.Request) {
+	if in := a.ignoreCapable(w, r); in != nil {
+		writeJSON(w, http.StatusOK, a.containerLists(in))
+	}
+}
+
+// handleIntegrationIgnore adds or removes one name on the ignore list and
+// saves it straight away.
+func (a *App) handleIntegrationIgnore(w http.ResponseWriter, r *http.Request) {
+	in := a.ignoreCapable(w, r)
+	if in == nil {
+		return
+	}
+	var body struct {
+		Name   string `json:"name"`
+		Ignore bool   `json:"ignore"`
+	}
+	if !readJSON(w, r, &body) {
+		return
+	}
+	name := strings.TrimSpace(body.Name)
+	if name == "" || len(name) > 255 || strings.ContainsAny(name, ",\r\n") {
+		httpError(w, http.StatusBadRequest, "invalid container name")
+		return
+	}
+	var list []string
+	for _, n := range splitList(in.Config["ignore"]) {
+		if n != name {
+			list = append(list, n)
+		}
+	}
+	if body.Ignore {
+		list = append(list, name)
+	}
+	in.Config["ignore"] = strings.Join(list, ", ")
+	if err := a.updateIntegration(in); err != nil {
+		httpError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if body.Ignore && in.Type == "portainer" {
+		// Take it off the pending list now rather than at the next check.
+		report := a.portainerReport(in.ID)
+		kept := report.Items[:0]
+		for _, it := range report.Items {
+			if it.Name != name {
+				kept = append(kept, it)
+			}
+		}
+		report.Items = kept
+		a.savePortainerReport(in.ID, report)
+	}
+	writeJSON(w, http.StatusOK, a.containerLists(in))
 }
 
 // ---- notification history ----

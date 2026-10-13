@@ -139,6 +139,7 @@ type portainerReport struct {
 	Checked   int             `json:"checked"` // containers compared against the registry
 	Limited   int             `json:"limited"` // skipped: stack not managed by Portainer
 	Ignored   int             `json:"ignored"` // skipped: ignore list, Notified itself, pinned or local images
+	Names     []string        `json:"names"`   // containers the user could choose to ignore
 	Errors    []string        `json:"errors"`
 }
 
@@ -263,8 +264,11 @@ func pollPortainer(ctx context.Context, a *App, in *Integration) error {
 				report.Limited++
 				continue
 			}
-			skip := isSelf(c) || c.Labels["com.docker.swarm.service.name"] != "" ||
-				strings.Contains(c.Image, "@") || strings.HasPrefix(c.Image, "sha256:") || !imageRefRE.MatchString(c.Image)
+			untouchable := isSelf(c) || c.Labels["com.docker.swarm.service.name"] != ""
+			if !untouchable {
+				report.Names = append(report.Names, name)
+			}
+			skip := untouchable || strings.Contains(c.Image, "@") || strings.HasPrefix(c.Image, "sha256:") || !imageRefRE.MatchString(c.Image)
 			for _, pat := range ignore {
 				if ok, _ := path.Match(pat, name); ok {
 					skip = true

@@ -178,6 +178,13 @@ body.modal-open { overflow: hidden; }
 .typegrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
 .typegrid .btn { justify-content: flex-start; padding: 10px; }
 .copybox { display: flex; gap: 8px; }
+div.field { margin-bottom: 14px; }
+div.field > span { display: block; font-weight: 500; margin-bottom: 5px; }
+div.field > small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 4px; }
+.ignored { list-style: none; margin: 8px 0 0; padding: 0; border: 1px solid var(--border); border-radius: 8px; }
+.ignored li { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; border-bottom: 1px solid var(--border); }
+.ignored li:last-child { border-bottom: 0; }
+.ignored-empty { margin-top: 8px; }
 .copybox input { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; }
 .setup { background: var(--panel-2); border-radius: 8px; padding: 12px 14px; color: var(--text-soft); white-space: pre-wrap; word-break: break-word; margin-bottom: 14px; }
 .events td { padding: 6px 8px; }

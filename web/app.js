@@ -478,6 +478,47 @@ function integrationCard(i) {
     i.enabled && i.status && i.status.last_error ? h('div', { class: 'err' }, i.status.last_error) : null);
 }
 
+// ignoreWidget edits a container ignore list: pick a detected container to
+// ignore (with confirmation), and unignore from the list below. Changes are
+// saved immediately; `state.value` mirrors the list for the editor's Save.
+function ignoreWidget(existing, initial) {
+  const state = { value: initial || '' };
+  const el = h('div', { class: 'ignorebox' });
+  if (!existing) {
+    el.append(h('div', { class: 'dim' }, 'Save the integration first. Detected containers will then be listed here.'));
+    return { el, state };
+  }
+  const render = (data) => {
+    state.value = data.ignored.join(', ');
+    const choices = data.detected.filter((n) => !data.ignored.includes(n));
+    const sel = h('select', {},
+      h('option', { value: '' }, choices.length ? 'Choose a container…' : (data.detected.length ? 'All detected containers are ignored' : 'No containers detected yet')),
+      choices.map((n) => h('option', { value: n }, n)));
+    const change = async (name, ignore) => {
+      try {
+        render(await api('POST', '/integrations/' + existing.id + '/ignore', { name, ignore }));
+        toast(name + (ignore ? ' is now ignored' : ' is no longer ignored'));
+      } catch (e) { fail(e); }
+    };
+    const add = h('button', {
+      class: 'btn', type: 'button', onclick: () => {
+        const name = sel.value;
+        if (!name) return toast('Choose a container first', true);
+        if (confirm('Ignore "' + name + '"? Notified will skip it until you unignore it.')) change(name, true);
+      },
+    }, 'Ignore');
+    el.replaceChildren(
+      h('div', { class: 'copybox' }, sel, add),
+      data.ignored.length
+        ? h('ul', { class: 'ignored' }, data.ignored.map((n) => h('li', {}, h('span', { class: 'mono grow' }, n),
+          h('button', { class: 'btn small', type: 'button', onclick: () => change(n, false) }, 'Unignore'))))
+        : h('div', { class: 'dim ignored-empty' }, 'Nothing is ignored.'));
+  };
+  el.append(h('div', { class: 'dim' }, 'Loading…'));
+  api('GET', '/integrations/' + existing.id + '/containers').then(render).catch(fail);
+  return { el, state };
+}
+
 function typePicker() {
   let close;
   const groups = [...new Set(state.types.map((t) => t.group))];
@@ -505,6 +546,11 @@ function integrationModal(existing, newType) {
   const inputs = {};
   const fields = def.fields.map((f) => {
     const val = i.config[f.key] !== undefined ? i.config[f.key] : (f.default || '');
+    if (f.kind === 'containers') {
+      const w = ignoreWidget(existing, val);
+      inputs[f.key] = w.state;
+      return h('div', { class: 'field' }, h('span', {}, f.label), w.el, f.help ? h('small', {}, f.help) : null);
+    }
     if (f.kind === 'bool') {
       inputs[f.key] = h('input', { type: 'checkbox', checked: val === 'true' });
       return h('label', { class: 'check' }, inputs[f.key], f.label);
@@ -636,11 +682,22 @@ async function containerUpdatesPage() {
     const sections = groups.map((g) => {
       const rows = g.items.map((it) => {
         const btn = h('button', { class: 'btn small primary' }, 'Update');
+        const ignoreBtn = h('button', { class: 'btn small', title: 'Stop checking this container' }, 'Ignore');
         const row = h('tr', {},
           h('td', {}, h('b', {}, it.name), it.stack ? h('div', { class: 'dim' }, 'stack: ' + it.stack) : null),
           h('td', { class: 'mono' }, it.image),
           h('td', { class: 'dim' }, it.env_name),
-          h('td', { class: 'nowrap' }, h('div', { class: 'row end' }, btn)));
+          h('td', { class: 'nowrap' }, h('div', { class: 'row end' }, ignoreBtn, btn)));
+        ignoreBtn.addEventListener('click', async () => {
+          if (working) return toast('An update is still running', true);
+          if (!confirm('Ignore "' + it.name + '"? Notified will stop checking it for updates. You can unignore it in the Portainer integration.')) return;
+          try {
+            await api('POST', '/integrations/' + g.integration_id + '/ignore', { name: it.name, ignore: true });
+            g.items = g.items.filter((x) => x !== it);
+            toast(it.name + ' is now ignored');
+            draw();
+          } catch (e) { fail(e); }
+        });
         btn.addEventListener('click', async () => {
           if (working) return toast('Another update is still running', true);
           working = true;

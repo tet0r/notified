@@ -43,6 +43,8 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("DELETE /api/integrations/{id}", a.auth(a.handleIntegrationDelete))
 	mux.HandleFunc("POST /api/integrations/{id}/test", a.auth(a.handleIntegrationTest))
 	mux.HandleFunc("POST /api/integrations/{id}/token", a.auth(a.handleIntegrationToken))
+	mux.HandleFunc("GET /api/integrations/{id}/containers", a.auth(a.handleIntegrationContainers))
+	mux.HandleFunc("POST /api/integrations/{id}/ignore", a.auth(a.handleIntegrationIgnore))
 
 	mux.HandleFunc("GET /api/notifications", a.auth(a.handleNotificationList))
 	mux.HandleFunc("DELETE /api/notifications", a.auth(a.handleNotificationClear))
