@@ -156,5 +156,4 @@ Then set the integration's address to `http://that-host:2375`.
 
 ## Not included (yet)
 
-Compared with Notifiarr this leaves out the Discord bot (slash commands, reactions), TRaSH guide sync,
-media requests from Discord, and multi-user accounts.
+Discord bot (slash commands, reactions), TRaSH guide sync, media requests from Discord, and multi-user accounts.
