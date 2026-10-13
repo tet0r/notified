@@ -68,20 +68,6 @@ Every notification carries a picture. Discord can only show images it can downlo
   [dashboard-icons](https://github.com/homarr-labs/dashboard-icons) collection.
 - Anything else falls back to the app's own icon. Icons are loaded by Discord from the jsDelivr CDN.
 
-### Versions and updates
-
-Releases are tagged `vMAJOR.MINOR.PATCH`. Each release publishes `ghcr.io/tet0r/notified:X.Y.Z`,
-`:X.Y` and `:latest`; every push to `main` publishes `:edge`. Pin a tag in the compose file if you
-want to control when you upgrade.
-
-Notified checks GitHub for a newer release every 6 hours and shows a notice in the sidebar and under
-**Settings → Updates**. Update notices stay in the app; they are never sent to Discord. The check
-only reads the public releases API and can be switched off there. Update with:
-
-```bash
-docker compose pull && docker compose up -d
-```
-
 ### Container updates (Portainer)
 
 Add a **Portainer** integration with your Portainer URL and an administrator access token. Notified
@@ -167,20 +153,6 @@ Then set the integration's address to `http://that-host:2375`.
   check) and the jsDelivr CDN (container icons).
 - The container runs as root so it can read a mounted Docker socket; `no-new-privileges` is set in
   the sample compose file.
-
-## Develop
-
-Needs Go 1.26+ (releases are built with the current Go version). No CGO or Node toolchain: the UI is plain HTML/CSS/JS embedded in the binary.
-
-```bash
-go build -ldflags "-X main.version=$(git describe --tags --always | sed 's/^v//')" -o notified .
-NOTIFIED_DATA_DIR=./data ./notified
-```
-
-To cut a release, push a tag: `git tag v1.2.3 && git push origin v1.2.3`. CI builds the images
-and creates the GitHub release with generated notes.
-
-The System monitor and Docker integrations only work on Linux.
 
 ## Not included (yet)
 
