@@ -205,7 +205,9 @@ function refreshNavCount() {
   if (!navEl) return;
   const link = [...navEl.children].find((a) => a.dataset.page === 'updates');
   const n = state.containerUpdates.reduce((sum, g) => sum + g.items.length, 0);
-  link.replaceChildren(pages.updates.label, n ? h('span', { class: 'count' }, n) : null);
+  // replaceChildren would print a null as the text "null", so only pass real nodes.
+  link.replaceChildren(pages.updates.label);
+  if (n) link.append(h('span', { class: 'count' }, n));
 }
 
 function route() {
