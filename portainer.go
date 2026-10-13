@@ -374,21 +374,31 @@ func pollPortainer(ctx context.Context, a *App, in *Integration) error {
 		}
 	}
 	a.statePrune(in.ID, "u:", active)
-	if len(fresh) > 0 {
-		e := Embed{Color: colorBlue, Author: &EmbedAuthor{Name: in.Name}}
-		e.Title = fmt.Sprintf("%d container updates available", len(fresh))
-		if len(fresh) == 1 {
-			e.Title = "Container update available"
+	link := ""
+	if base := a.setting("base_url"); base != "" {
+		link = base + "/#updates"
+	}
+	switch {
+	case len(fresh) == 0:
+	case len(fresh) <= 8:
+		// One message per container, so each can show that container's icon.
+		for _, it := range fresh {
+			e := Embed{Title: "Container update available", Color: colorBlue, URL: link, Author: &EmbedAuthor{Name: in.Name}}
+			e.Description = "**" + it.Name + "**\n" + it.Image
+			e.Add("Environment", it.EnvName, true)
+			e.Add("Stack", it.Stack, true)
+			e.Thumb(a.containerIcon(ctx, it.Image, it.Name))
+			a.Dispatch(in, "update_available", e, nil)
 		}
+	default:
+		// Too many for individual messages: send one summary.
+		e := Embed{Color: colorBlue, URL: link, Author: &EmbedAuthor{Name: in.Name}}
+		e.Title = fmt.Sprintf("%d container updates available", len(fresh))
 		var lines []string
 		for _, it := range fresh {
 			lines = append(lines, "• **"+it.Name+"** — "+it.Image)
 		}
-		e.Description = joinLimited(lines, 15)
-		if base := a.setting("base_url"); base != "" {
-			e.URL = base + "/#updates"
-			e.Add("Update", "Open Notified → Container updates to apply.", false)
-		}
+		e.Description = joinLimited(lines, 20)
 		a.Dispatch(in, "update_available", e, nil)
 	}
 	if len(report.Errors) > 0 {
@@ -490,6 +500,7 @@ func (a *App) handleContainerUpdateApply(w http.ResponseWriter, r *http.Request)
 	err = p.call(ctx, http.MethodPost, apiPath, map[string]bool{"PullImage": true}, nil)
 
 	e := Embed{Author: &EmbedAuthor{Name: in.Name}, Description: "**" + item.Name + "** — " + item.Image}
+	e.Thumb(a.containerIcon(ctx, item.Image, item.Name))
 	if err != nil {
 		e.Title, e.Color = "Container update failed", colorRed
 		e.Add("Error", trunc(err.Error(), 600), false)

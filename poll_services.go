@@ -87,6 +87,7 @@ func pollDocker(ctx context.Context, a *App, in *Integration) error {
 		e := Embed{Title: title, Color: color, Author: &EmbedAuthor{Name: in.Name}}
 		e.Description = "**" + name + "**"
 		e.Add("Image", cs.Image, false)
+		e.Thumb(a.containerIcon(ctx, cs.Image, name))
 		a.Dispatch(in, event, e, nil)
 	}
 	for name, cs := range current {

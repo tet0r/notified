@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -53,6 +55,15 @@ type Embed struct {
 	Thumbnail   *EmbedImage  `json:"thumbnail,omitempty"`
 	Footer      *EmbedFooter `json:"footer,omitempty"`
 	Fields      []EmbedField `json:"fields,omitempty"`
+
+	// Not part of the Discord payload:
+	// attach is a picture uploaded with the message and shown as the thumbnail.
+	attach     []byte
+	attachName string
+	// fetchThumb is a picture to download and upload at send time, for
+	// artwork on servers Discord cannot reach; fallbackThumb is used if that fails.
+	fetchThumb    string
+	fallbackThumb string
 }
 
 // Add appends a field, skipping empty values.
@@ -125,6 +136,7 @@ func (a *App) deliver(integID int64, integName, typ, event string, chID int64, e
 	if e.Footer == nil {
 		e.Footer = &EmbedFooter{Text: a.setting("instance_name") + " • " + integName}
 	}
+	a.decorate(typ, integName, &e)
 	e.clamp()
 	embedJSON, _ := json.Marshal(e)
 	n := &Notification{
@@ -150,6 +162,34 @@ func (a *App) deliver(integID int64, integName, typ, event string, chID int64, e
 	return id, nil
 }
 
+// decorate gives every notification a picture: the app's icon beside the
+// instance name, and as the thumbnail when the event has no artwork of its own.
+func (a *App) decorate(typ, integName string, e *Embed) {
+	icon := appIconURL(typ)
+	if icon != "" {
+		if e.Author == nil {
+			e.Author = &EmbedAuthor{Name: integName}
+		}
+		if e.Author.IconURL == "" {
+			e.Author.IconURL = icon
+		}
+	}
+	// A thumbnail stored for an uploaded picture cannot be reused later (resend).
+	if e.Thumbnail != nil && strings.HasPrefix(e.Thumbnail.URL, "attachment://") && len(e.attach) == 0 {
+		e.Thumbnail = nil
+	}
+	switch {
+	case len(e.attach) > 0:
+		// The uploaded picture becomes the thumbnail when the message is sent.
+	case e.Thumbnail == nil:
+		e.Thumb(icon)
+	case typ == "jellyfin" || typ == "emby":
+		// Artwork lives on the media server, usually on the local network:
+		// download it ourselves and upload it rather than hand Discord the URL.
+		e.fetchThumb, e.fallbackThumb = e.Thumbnail.URL, icon
+	}
+}
+
 func (a *App) sender(ctx context.Context) {
 	for {
 		select {
@@ -167,17 +207,48 @@ func (a *App) sender(ctx context.Context) {
 
 // postDiscord sends one embed, retrying on rate limits and server errors.
 func (a *App) postDiscord(ctx context.Context, webhookURL string, e Embed) error {
-	body, err := json.Marshal(map[string]any{
+	if e.fetchThumb != "" && len(e.attach) == 0 {
+		if data, name, err := a.fetchImage(ctx, e.fetchThumb); err == nil {
+			e.attach, e.attachName = data, name
+		} else {
+			e.Thumbnail = nil
+			e.Thumb(e.fallbackThumb)
+		}
+	}
+	payload := map[string]any{
 		"username":   firstNonEmpty(a.setting("bot_name"), "Notified"),
 		"avatar_url": a.setting("avatar_url"),
-		"embeds":     []Embed{e},
-	})
-	if err != nil {
-		return err
+	}
+	var body []byte
+	contentType := "application/json"
+	if len(e.attach) > 0 {
+		name := firstNonEmpty(e.attachName, "thumb.jpg")
+		e.Thumbnail = &EmbedImage{URL: "attachment://" + name}
+		payload["embeds"] = []Embed{e}
+		meta, err := json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+		var buf bytes.Buffer
+		mw := multipart.NewWriter(&buf)
+		mw.WriteField("payload_json", string(meta))
+		part, err := mw.CreateFormFile("files[0]", name)
+		if err != nil {
+			return err
+		}
+		part.Write(e.attach)
+		mw.Close()
+		body, contentType = buf.Bytes(), mw.FormDataContentType()
+	} else {
+		payload["embeds"] = []Embed{e}
+		var err error
+		if body, err = json.Marshal(payload); err != nil {
+			return err
+		}
 	}
 	var lastErr error
 	for attempt := 0; attempt < 4; attempt++ {
-		wait, err := a.postOnce(ctx, webhookURL, body)
+		wait, err := a.postOnce(ctx, webhookURL, contentType, body)
 		if err == nil {
 			return nil
 		}
@@ -202,12 +273,12 @@ func (a *App) postDiscord(ctx context.Context, webhookURL string, e Embed) error
 
 // postOnce returns a retry delay with the error: negative means give up,
 // zero means use the default backoff.
-func (a *App) postOnce(ctx context.Context, webhookURL string, body []byte) (time.Duration, error) {
+func (a *App) postOnce(ctx context.Context, webhookURL, contentType string, body []byte) (time.Duration, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, webhookURL, bytes.NewReader(body))
 	if err != nil {
 		return -1, errors.New("invalid webhook URL")
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", contentType)
 	resp, err := a.http.Do(req)
 	if err != nil {
 		// Avoid echoing the webhook URL (a secret) into the history.

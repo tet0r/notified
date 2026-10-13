@@ -21,6 +21,9 @@ type App struct {
 	http  *http.Client
 	sendQ chan sendJob
 
+	// iconCache remembers which container icon names exist on the CDN.
+	iconCache sync.Map
+
 	// applyMu serialises container updates so two clicks never overlap.
 	applyMu sync.Mutex
 

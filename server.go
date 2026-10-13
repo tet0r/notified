@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"io"
 	"io/fs"
 	"net/http"
 	"strings"
+	"time"
 )
 
 //go:embed web
@@ -98,7 +100,7 @@ func (a *App) handleHook(w http.ResponseWriter, r *http.Request) {
 
 	const maxBody = 16 << 20 // Plex attaches a thumbnail to some events
 	r.Body = http.MaxBytesReader(w, r.Body, maxBody)
-	var raw []byte
+	var raw, thumb []byte
 	ct := r.Header.Get("Content-Type")
 	switch {
 	case strings.HasPrefix(ct, "multipart/form-data"):
@@ -107,6 +109,7 @@ func (a *App) handleHook(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		raw = []byte(firstNonEmpty(r.FormValue("payload"), r.FormValue("data")))
+		thumb = formImage(r, "thumb")
 	case strings.HasPrefix(ct, "application/x-www-form-urlencoded"):
 		if err := r.ParseForm(); err != nil {
 			httpError(w, http.StatusBadRequest, "invalid form body")
@@ -141,9 +144,39 @@ func (a *App) handleHook(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ignored"})
 		return
 	}
+	if name := imageFilename(thumb); name != "" && e.Thumbnail == nil {
+		// Plex uploads the item's artwork with the event; pass it on to Discord.
+		e.attach, e.attachName = thumb, name
+	}
+	if def.Enrich != nil && e.Thumbnail == nil && len(e.attach) == 0 {
+		ctx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
+		def.Enrich(ctx, a, in, p, &e)
+		cancel()
+	}
 	status := "ok"
 	if _, err := a.Dispatch(in, event, e, raw); err != nil {
 		status = "error: " + err.Error()
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": status, "event": event})
+}
+
+// formImage reads a small uploaded file from a multipart webhook.
+func formImage(r *http.Request, field string) []byte {
+	if r.MultipartForm == nil || len(r.MultipartForm.File[field]) == 0 {
+		return nil
+	}
+	fh := r.MultipartForm.File[field][0]
+	if fh.Size > 4<<20 {
+		return nil
+	}
+	f, err := fh.Open()
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, 4<<20))
+	if err != nil {
+		return nil
+	}
+	return data
 }

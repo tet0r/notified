@@ -22,6 +22,7 @@ type EventDef struct {
 
 type parseFunc func(in *Integration, p J) (event string, e Embed, ok bool)
 type pollFunc func(ctx context.Context, a *App, in *Integration) error
+type enrichFunc func(ctx context.Context, a *App, in *Integration, p J, e *Embed)
 
 // TypeDef describes an integration type: how it is configured, which events
 // it can emit, and how it receives (Parse) or collects (Poll) them.
@@ -37,6 +38,8 @@ type TypeDef struct {
 	DefaultInterval int        `json:"-"`
 	Parse           parseFunc  `json:"-"`
 	Poll            pollFunc   `json:"-"`
+	// Enrich may add artwork to an embed that has none, e.g. by asking the app.
+	Enrich enrichFunc `json:"-"`
 }
 
 var typeOrder = []string{
@@ -56,7 +59,7 @@ func init() {
 
 func starrFields(app string) []FieldDef {
 	return []FieldDef{
-		{Key: "url", Label: app + " URL", Kind: "text", Help: "Optional. Needed only for stuck-queue checks; the address Notified can reach " + app + " at."},
+		{Key: "url", Label: app + " URL", Kind: "text", Help: "Optional. Used for stuck-queue checks and to fetch artwork when " + app + " does not include it; the address Notified can reach " + app + " at."},
 		{Key: "apikey", Label: app + " API key", Kind: "password", Help: "Optional. Settings → General → API Key."},
 		{Key: "interval", Label: "Queue check interval (seconds)", Kind: "number", Default: "600", Help: "0 disables queue checks."},
 		{Key: "stuck_minutes", Label: "Report queue items stuck for (minutes)", Kind: "number", Default: "30"},
@@ -114,7 +117,7 @@ func buildTypeDefs() []*TypeDef {
 				ev("file_deleted", "Episode file deleted", false),
 				ev("stuck", "Stuck queue item", true),
 			),
-			DefaultInterval: 600, Parse: parseStarr("sonarr"), Poll: pollStarrQueue("sonarr"),
+			DefaultInterval: 600, Parse: parseStarr("sonarr"), Poll: pollStarrQueue("sonarr"), Enrich: starrArtwork("sonarr"),
 		},
 		{
 			Type: "radarr", Label: "Radarr", Group: "*arr Apps", Webhook: true, Poller: true,
@@ -129,7 +132,7 @@ func buildTypeDefs() []*TypeDef {
 				ev("file_deleted", "Movie file deleted", false),
 				ev("stuck", "Stuck queue item", true),
 			),
-			DefaultInterval: 600, Parse: parseStarr("radarr"), Poll: pollStarrQueue("radarr"),
+			DefaultInterval: 600, Parse: parseStarr("radarr"), Poll: pollStarrQueue("radarr"), Enrich: starrArtwork("radarr"),
 		},
 		{
 			Type: "lidarr", Label: "Lidarr", Group: "*arr Apps", Webhook: true, Poller: true,
@@ -145,7 +148,7 @@ func buildTypeDefs() []*TypeDef {
 				ev("deleted", "Artist or album deleted", true),
 				ev("stuck", "Stuck queue item", true),
 			),
-			DefaultInterval: 600, Parse: parseStarr("lidarr"), Poll: pollStarrQueue("lidarr"),
+			DefaultInterval: 600, Parse: parseStarr("lidarr"), Poll: pollStarrQueue("lidarr"), Enrich: starrArtwork("lidarr"),
 		},
 		{
 			Type: "readarr", Label: "Readarr", Group: "*arr Apps", Webhook: true, Poller: true,
@@ -162,7 +165,7 @@ func buildTypeDefs() []*TypeDef {
 				ev("file_deleted", "Book file deleted", false),
 				ev("stuck", "Stuck queue item", true),
 			),
-			DefaultInterval: 600, Parse: parseStarr("readarr"), Poll: pollStarrQueue("readarr"),
+			DefaultInterval: 600, Parse: parseStarr("readarr"), Poll: pollStarrQueue("readarr"), Enrich: starrArtwork("readarr"),
 		},
 		{
 			Type: "prowlarr", Label: "Prowlarr", Group: "*arr Apps", Webhook: true,

@@ -45,6 +45,19 @@ Open `http://<host>:8080` and create the admin account. Then:
 3. **Settings** → set **Base URL** to the address your apps use to reach Notified (for example
    `http://notified:8080` on a shared Docker network) so the displayed webhook URLs are correct.
 
+### Pictures in notifications
+
+Every notification carries a picture. Discord can only show images it can download itself, so:
+
+- **Media artwork** (posters) is used when the app supplies a public image URL. For Sonarr, Radarr,
+  Lidarr and Readarr, fill in the integration's URL and API key and Notified will look the poster up
+  when the webhook does not include one.
+- **Plex, Jellyfin and Emby** artwork is uploaded to Discord by Notified, so it works even when the
+  media server is only reachable on your network.
+- **Containers** get the icon matching their image or name, from the public
+  [dashboard-icons](https://github.com/homarr-labs/dashboard-icons) collection.
+- Anything else falls back to the app's own icon. Icons are loaded by Discord from the jsDelivr CDN.
+
 ### Versions and updates
 
 Releases are tagged `vMAJOR.MINOR.PATCH`. Each release publishes `ghcr.io/tet0r/notified:X.Y.Z`,

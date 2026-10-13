@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"strings"
 )
@@ -308,4 +309,32 @@ func starrStatusMessages(msgs []J) string {
 		}
 	}
 	return joinLimited(lines, 8)
+}
+
+// starrArtwork looks up the poster for the series, movie, artist or author
+// in an event when the webhook itself carried no usable image. It needs the
+// integration's URL and API key; without them it does nothing.
+func starrArtwork(kind string) enrichFunc {
+	object, resource, apiVer := "series", "series", "v3"
+	switch kind {
+	case "radarr":
+		object, resource = "movie", "movie"
+	case "lidarr":
+		object, resource, apiVer = "artist", "artist", "v1"
+	case "readarr":
+		object, resource, apiVer = "author", "author", "v1"
+	}
+	return func(ctx context.Context, a *App, in *Integration, p J, e *Embed) {
+		base := strings.TrimRight(strings.TrimSpace(in.Config["url"]), "/")
+		key := strings.TrimSpace(in.Config["apikey"])
+		id := int64(p.Num(object, "id"))
+		if base == "" || key == "" || id <= 0 {
+			return
+		}
+		var item J
+		url := fmt.Sprintf("%s/api/%s/%s/%d", base, apiVer, resource, id)
+		if err := getJSON(ctx, a.http, url, map[string]string{"X-Api-Key": key}, &item); err == nil {
+			e.Thumb(starrPoster(item))
+		}
+	}
 }
