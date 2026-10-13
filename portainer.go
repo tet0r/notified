@@ -33,10 +33,32 @@ type portainer struct {
 	c    *http.Client
 }
 
+// portainerBaseURL reduces whatever the user pasted to the address the API
+// lives under. People often paste a page URL from the browser, such as
+// https://host:9443/#!/2/docker/containers, so the fragment, query and a
+// trailing /api are dropped. A sub-path (reverse proxy) is kept.
+func portainerBaseURL(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", errors.New("URL and access token are required")
+	}
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return "", errors.New("the Portainer URL must start with http:// or https://, for example https://portainer:9443")
+	}
+	u.Fragment, u.RawQuery, u.User = "", "", nil
+	u.Path = strings.TrimSuffix(strings.TrimRight(u.Path, "/"), "/api")
+	u.RawPath = ""
+	return strings.TrimRight(u.String(), "/"), nil
+}
+
 func newPortainer(in *Integration, timeout time.Duration) (*portainer, error) {
-	base := strings.TrimRight(strings.TrimSpace(in.Config["url"]), "/")
+	base, err := portainerBaseURL(in.Config["url"])
+	if err != nil {
+		return nil, err
+	}
 	key := strings.TrimSpace(in.Config["apikey"])
-	if base == "" || key == "" {
+	if key == "" {
 		return nil, errors.New("URL and access token are required")
 	}
 	return &portainer{base: base, key: key, c: &http.Client{
@@ -90,7 +112,13 @@ func (p *portainer) call(ctx context.Context, method, apiPath string, body, out 
 		return nil
 	}
 	if err := json.Unmarshal(raw, out); err != nil {
-		return errors.New("unexpected response from Portainer")
+		what, _, _ := strings.Cut(apiPath, "?")
+		if bytes.HasPrefix(bytes.TrimSpace(raw), []byte("<")) || strings.Contains(resp.Header.Get("Content-Type"), "text/html") {
+			// A 200 with HTML means something other than the API answered:
+			// a wrong URL, or a login page from a reverse proxy in front.
+			return fmt.Errorf("%s returned a web page instead of API data for %s. Use Portainer's own address (for example https://portainer:9443) and make sure no login proxy sits in front of its API", req.URL.Host, what)
+		}
+		return fmt.Errorf("could not read Portainer's answer for %s: %v", what, err)
 	}
 	return nil
 }
