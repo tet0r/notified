@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -34,6 +35,10 @@ var jellyfinEvents = map[string]string{
 	"userupdated":                 "user_changed",
 	"userdatasaved":               "user_data",
 }
+
+// mediaIDRE matches the item ids Jellyfin and Emby use. Ids are placed in
+// request paths, so anything else (slashes, dots, query characters) is refused.
+var mediaIDRE = regexp.MustCompile(`^[A-Za-z0-9-]{1,64}$`)
 
 // jfStr reads a string the plugin has pre-escaped for templates (it turns
 // every `"` into `\"`), undoing that so titles read normally.
@@ -97,10 +102,27 @@ func parseJellyfin(in *Integration, raw J) (string, Embed, bool) {
 	if media != "" {
 		e.Description = "**" + media + "**"
 	}
-	// Link and artwork only work if the plugin's Server Url is a real address.
-	if base, id := strings.TrimRight(p.Str("serverurl"), "/"), p.Str("itemid"); id != "" && strings.HasPrefix(base, "http") {
-		e.URL = base + "/web/index.html#!/details?id=" + id
-		e.Thumb(base + "/Items/" + id + "/Images/Primary?maxHeight=300")
+	// Artwork is downloaded by Notified, so it must only ever come from the
+	// address the admin configured, never from one supplied in the webhook:
+	// otherwise anyone holding the webhook URL could make Notified fetch
+	// arbitrary internal addresses.
+	id := p.Str("itemid")
+	if !mediaIDRE.MatchString(id) {
+		id = ""
+	}
+	configured := strings.TrimRight(strings.TrimSpace(in.Config["url"]), "/")
+	linkBase := configured
+	if linkBase == "" {
+		// A link is only text in the Discord message; the payload's address is fine for that.
+		if u := strings.TrimRight(p.Str("serverurl"), "/"); strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://") {
+			linkBase = u
+		}
+	}
+	if id != "" && linkBase != "" {
+		e.URL = linkBase + "/web/index.html#!/details?id=" + id
+	}
+	if id != "" && configured != "" {
+		e.Thumb(configured + "/Items/" + id + "/Images/Primary?maxHeight=300")
 	}
 	addWho := func() {
 		e.Add("User", user, true)

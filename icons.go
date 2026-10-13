@@ -148,7 +148,14 @@ func (a *App) fetchImage(ctx context.Context, url string) (data []byte, filename
 	if err != nil {
 		return nil, "", err
 	}
-	resp, err := a.http.Do(req)
+	// A redirect must not carry the request to a different host.
+	client := &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(next *http.Request, via []*http.Request) error {
+		if len(via) >= 3 || next.URL.Host != via[0].URL.Host {
+			return http.ErrUseLastResponse
+		}
+		return nil
+	}}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, "", err
 	}

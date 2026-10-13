@@ -86,7 +86,7 @@ func scanContainers(ctx context.Context, call dockerCall, o scanOpts, report *po
 		if !untouchable {
 			report.Names = append(report.Names, name)
 		}
-		skip := untouchable || strings.Contains(c.Image, "@") || strings.HasPrefix(c.Image, "sha256:") || !imageRefRE.MatchString(c.Image)
+		skip := untouchable || strings.Contains(c.Image, "@") || strings.HasPrefix(c.Image, "sha256:") || !imageRefRE.MatchString(c.Image) || strings.Contains(c.Image, "..")
 		for _, pat := range o.ignore {
 			if ok, _ := path.Match(pat, name); ok {
 				skip = true

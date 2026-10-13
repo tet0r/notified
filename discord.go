@@ -218,6 +218,8 @@ func (a *App) postDiscord(ctx context.Context, webhookURL string, e Embed) error
 	payload := map[string]any{
 		"username":   firstNonEmpty(a.setting("bot_name"), "Notified"),
 		"avatar_url": a.setting("avatar_url"),
+		// Text arriving in webhooks must never be able to ping anyone.
+		"allowed_mentions": map[string]any{"parse": []string{}},
 	}
 	var body []byte
 	contentType := "application/json"

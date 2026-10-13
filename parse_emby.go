@@ -98,9 +98,9 @@ func parseEmby(in *Integration, p J) (string, Embed, bool) {
 	if media != "" {
 		e.Description = "**" + media + "**"
 	}
-	if base, id := strings.TrimRight(in.Config["url"], "/"), item.Str("Id"); base != "" && id != "" {
+	if base, id := strings.TrimRight(strings.TrimSpace(in.Config["url"]), "/"), item.Str("Id"); base != "" && mediaIDRE.MatchString(id) {
 		e.URL = base + "/web/index.html#!/item?id=" + id
-		if sid := p.Str("Server", "Id"); sid != "" {
+		if sid := p.Str("Server", "Id"); mediaIDRE.MatchString(sid) {
 			e.URL += "&serverId=" + sid
 		}
 		e.Thumb(base + "/emby/Items/" + id + "/Images/Primary?maxHeight=300")

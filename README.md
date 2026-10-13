@@ -62,7 +62,8 @@ Every notification carries a picture. Discord can only show images it can downlo
   Lidarr and Readarr, fill in the integration's URL and API key and Notified will look the poster up
   when the webhook does not include one.
 - **Plex, Jellyfin and Emby** artwork is uploaded to Discord by Notified, so it works even when the
-  media server is only reachable on your network.
+  media server is only reachable on your network. Jellyfin and Emby need the server's URL filled in
+  on the integration; Notified only ever downloads artwork from that address.
 - **Containers** get the icon matching their image or name, from the public
   [dashboard-icons](https://github.com/homarr-labs/dashboard-icons) collection.
 - Anything else falls back to the app's own icon. Icons are loaded by Discord from the jsDelivr CDN.
@@ -132,9 +133,11 @@ Then set the integration's address to `http://that-host:2375`.
 ### Compose notes
 
 - `./data` holds the database. Back that folder up and you have backed up everything.
-- `/var/run/docker.sock` is only needed for the Docker containers integration. It is mounted read-only,
-  but socket access still exposes container details, so remove the line if you don't use it.
-- `/:/host:ro` lets the System monitor read disk usage (watch `/host`, or mount specific disks and list those paths).
+- The Docker socket and host filesystem mounts are commented out by default; uncomment only what you use.
+  - `/var/run/docker.sock` is for the Docker containers integration. Access to the socket is
+    effectively root on the host, even mounted read-only.
+  - For System monitor disk usage, mount the specific disks you want watched and list those paths in
+    the integration, rather than the whole host.
 - Set `TZ` to your timezone so the dashboard's days line up.
 
 ### Environment variables
@@ -149,11 +152,21 @@ Then set the integration's address to `http://that-host:2375`.
 
 ## Security
 
-- Webhook URLs contain a random per-integration token; anyone who has the URL can post notifications
-  to that integration. Regenerate it from the integration's editor if it leaks.
-- The web UI uses a single admin login. Put Notified behind a reverse proxy with HTTPS if it is
-  reachable from outside your LAN.
-- API keys and Discord webhook URLs are stored unencrypted in the SQLite file; protect the `data` folder.
+- **First run:** whoever opens the web UI first creates the admin account. Do that before exposing
+  the port to anyone else.
+- **Login:** one admin account; repeated failed logins from an address are locked out for ten
+  minutes. Put Notified behind a reverse proxy with HTTPS if it is reachable from outside your LAN.
+- **Webhook URLs** contain a random per-integration token; anyone who has the URL can post
+  notifications to that integration. They can appear in the sending app's settings and in proxy
+  logs. Regenerate one from the integration's editor if it leaks.
+- **Stored secrets:** API keys, access tokens and Discord webhook URLs are stored unencrypted in the
+  SQLite file and are shown to the logged-in admin. Protect the `data` folder and its backups.
+- **Container updates:** the Portainer token, or an open Docker socket proxy, lets Notified recreate
+  containers. Anyone who can log in to Notified gets that ability too.
+- **Outbound requests:** besides the apps you configure and Discord, Notified contacts GitHub (update
+  check) and the jsDelivr CDN (container icons).
+- The container runs as root so it can read a mounted Docker socket; `no-new-privileges` is set in
+  the sample compose file.
 
 ## Develop
 

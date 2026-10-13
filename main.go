@@ -71,6 +71,10 @@ func main() {
 		Addr:              ":" + port,
 		Handler:           app.routes(),
 		ReadHeaderTimeout: 10 * time.Second,
+		// Bounds slow uploads. There is deliberately no write timeout: a
+		// container update can legitimately take many minutes to answer.
+		ReadTimeout: 2 * time.Minute,
+		IdleTimeout: 2 * time.Minute,
 	}
 	go func() {
 		<-ctx.Done()
@@ -91,6 +95,7 @@ func (a *App) janitor(ctx context.Context) {
 	defer t.Stop()
 	for {
 		a.db.Exec(`DELETE FROM sessions WHERE expires < ?`, time.Now().Unix())
+		a.pruneLoginFails()
 		keep := cfgInt(map[string]string{"n": a.setting("retention")}, "n", 2000)
 		if keep < 100 {
 			keep = 100

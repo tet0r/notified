@@ -5,14 +5,22 @@ services:
     # build: .
     container_name: notified
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     ports:
       - "8080:8080"
     environment:
       - TZ=America/New_York
     volumes:
       - ./data:/data
-      # Optional: lets the "Docker containers" integration watch containers.
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      # Optional: lets the "System monitor" integration read disk usage.
-      # Add more mounts (e.g. /mnt/media:/mnt/media:ro) for other disks.
-      - /:/host:ro
+      # The two mounts below give the container sight of the host, so they are
+      # off by default. Uncomment only the ones you use.
+      #
+      # "Docker containers" integration. Read-only on the file, but access to
+      # the Docker socket is effectively root on this host.
+      # - /var/run/docker.sock:/var/run/docker.sock:ro
+      #
+      # "System monitor" disk usage. Prefer mounting just the disks you want
+      # watched (and list those paths in the integration) over the whole host:
+      # - /mnt/media:/mnt/media:ro
+      # - /:/host:ro

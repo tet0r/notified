@@ -152,11 +152,28 @@ func (a *App) loginBlocked(ip string) bool {
 	return f.count >= 10
 }
 
+// pruneLoginFails drops expired entries and caps the table, so a flood of
+// failed logins from many addresses cannot consume memory indefinitely.
+func (a *App) pruneLoginFails() {
+	a.loginMu.Lock()
+	defer a.loginMu.Unlock()
+	now := time.Now()
+	for ip, f := range a.loginFails {
+		if now.After(f.reset) {
+			delete(a.loginFails, ip)
+		}
+	}
+}
+
 func (a *App) loginFailed(ip string) {
 	a.loginMu.Lock()
 	defer a.loginMu.Unlock()
 	f := a.loginFails[ip]
 	if f == nil || time.Now().After(f.reset) {
+		if len(a.loginFails) >= 10000 {
+			// Table is full of other addresses: start over rather than grow.
+			clear(a.loginFails)
+		}
 		f = &loginFail{reset: time.Now().Add(10 * time.Minute)}
 		a.loginFails[ip] = f
 	}

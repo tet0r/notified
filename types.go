@@ -204,6 +204,7 @@ func buildTypeDefs() []*TypeDef {
 		{
 			Type: "jellyfin", Label: "Jellyfin", Group: "Media servers", Webhook: true,
 			Fields: []FieldDef{
+				{Key: "url", Label: "Jellyfin URL", Kind: "text", Help: "Optional. Needed for artwork in notifications: the address Notified can reach Jellyfin at, e.g. http://jellyfin:8096"},
 				{Key: "users", Label: "Only these users", Kind: "text", Help: "Optional comma-separated Jellyfin usernames for playback events. Blank means everyone."},
 			},
 			Setup: "Jellyfin sends webhooks through its official Webhook plugin.\n" +
