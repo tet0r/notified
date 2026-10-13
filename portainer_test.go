@@ -70,3 +70,30 @@ func TestPortainerCallErrors(t *testing.T) {
 		t.Errorf("204: got %v", err)
 	}
 }
+
+func TestRegistryLookupRetriesWhenThrottled(t *testing.T) {
+	registryGap, registryBackoff = time.Millisecond, 5*time.Millisecond
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		if hits < 3 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			w.Write([]byte(`{"message":"toomanyrequests: retry-after: 785.35µs, allowed: 44000/minute"}`))
+			return
+		}
+		w.Write([]byte(`{"Descriptor":{"digest":"sha256:abc"}}`))
+	}))
+	defer srv.Close()
+	p := &portainer{base: srv.URL, key: "k", c: &http.Client{Timeout: 5 * time.Second}}
+	var dist struct {
+		Descriptor struct {
+			Digest string `json:"digest"`
+		} `json:"Descriptor"`
+	}
+	if err := p.registryLookup(context.Background(), "/api/x", &dist); err != nil {
+		t.Fatalf("expected the retry to succeed, got %v", err)
+	}
+	if hits != 3 || dist.Descriptor.Digest != "sha256:abc" {
+		t.Errorf("hits = %d, digest = %q", hits, dist.Descriptor.Digest)
+	}
+}

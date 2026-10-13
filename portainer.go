@@ -123,6 +123,37 @@ func (p *portainer) call(ctx context.Context, method, apiPath string, body, out 
 	return nil
 }
 
+// Pacing for registry lookups; variables so tests can shorten them.
+var (
+	registryGap     = 300 * time.Millisecond
+	registryBackoff = 2 * time.Second
+)
+
+// registryLookup asks the Docker engine (through Portainer) for an image's
+// current registry digest. Registries throttle bursts of these requests with
+// HTTP 429, so lookups are spaced out and a throttled one is retried.
+func (p *portainer) registryLookup(ctx context.Context, apiPath string, out any) error {
+	var err error
+	for attempt := 0; attempt < 4; attempt++ {
+		// A short gap before every lookup, growing after each throttled attempt.
+		wait := registryGap + time.Duration(attempt*attempt)*registryBackoff
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(wait):
+		}
+		if err = p.call(ctx, http.MethodGet, apiPath, nil, out); err == nil || !isThrottled(err) {
+			return err
+		}
+	}
+	return err
+}
+
+func isThrottled(err error) bool {
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "http 429") || strings.Contains(msg, "toomanyrequests") || strings.Contains(msg, "too many requests")
+}
+
 type pendingUpdate struct {
 	EnvID       int64  `json:"env_id"`
 	EnvName     string `json:"env_name"`
@@ -305,7 +336,7 @@ func pollPortainer(ctx context.Context, a *App, in *Integration) error {
 						Digest string `json:"digest"`
 					} `json:"Descriptor"`
 				}
-				if err := p.call(ctx, http.MethodGet, docker+"/distribution/"+c.Image+"/json", nil, &dist); err != nil {
+				if err := p.registryLookup(ctx, docker+"/distribution/"+c.Image+"/json", &dist); err != nil {
 					addErr("%s: could not check %s: %v", name, c.Image, err)
 				}
 				remote = dist.Descriptor.Digest

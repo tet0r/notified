@@ -82,7 +82,8 @@ func (a *App) runPoll(ctx context.Context, in *Integration) error {
 	st.running = true
 	a.pollMu.Unlock()
 
-	cctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	// Generous: a Portainer check paces one registry lookup per image.
+	cctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
 	err := safePoll(cctx, def.Poll, a, in)
 	cancel()
 
