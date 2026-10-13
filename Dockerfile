@@ -1,6 +1,6 @@
 # The build stage runs on the builder's own architecture and cross-compiles,
 # so multi-arch images don't compile under emulation.
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
 ARG TARGETOS
 ARG TARGETARCH
 ARG VERSION=dev

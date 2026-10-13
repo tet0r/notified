@@ -18,9 +18,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Always the newest Go release: go.mod only states the minimum, and an
+      # old patch release carries known standard-library vulnerabilities.
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version: stable
+          check-latest: true
       - run: go test ./...
       - name: Scan for known vulnerabilities
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
@@ -65,6 +68,16 @@ jobs:
           curl -fsS http://127.0.0.1:8080/ | grep -q '<div id="app">'
       - name: Validate compose file
         run: docker compose config --quiet
+      # Scan the binary that actually ships, built by the Dockerfile's own Go version.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          check-latest: true
+      - name: Scan the image's binary for known vulnerabilities
+        run: |
+          docker cp notified:/usr/local/bin/notified ./notified-bin
+          go version ./notified-bin
+          go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -mode=binary ./notified-bin
 
   publish:
     name: Publish to GHCR

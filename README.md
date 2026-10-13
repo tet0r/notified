@@ -170,7 +170,7 @@ Then set the integration's address to `http://that-host:2375`.
 
 ## Develop
 
-Needs Go 1.26+. No CGO or Node toolchain: the UI is plain HTML/CSS/JS embedded in the binary.
+Needs Go 1.26+ (releases are built with the current Go version). No CGO or Node toolchain: the UI is plain HTML/CSS/JS embedded in the binary.
 
 ```bash
 go build -ldflags "-X main.version=$(git describe --tags --always | sed 's/^v//')" -o notified .
