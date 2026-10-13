@@ -6,6 +6,12 @@ A self-hosted notification hub for a media server stack, inspired by Notifiarr. 
 webhooks to Notified, Notified watches the things that can't send webhooks, and everything is
 delivered to Discord as rich embeds. One small container, one SQLite file, no external services.
 
+## Screenshots
+
+![Dashboard showing notification counts, a seven-day chart, integration health and recent notifications](assets/screenshot-dashboard.png)
+
+![The Add integration dialog listing every supported app by group](assets/screenshot-integrations.png)
+
 ## What it does
 
 | Group | Integration | How it works | Events |

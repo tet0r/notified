@@ -19,7 +19,7 @@ func TestIconCandidates(t *testing.T) {
 		{image: "nginx:1.27", container: "web", want: "nginx", first: "nginx", absent: []string{"library"}},
 		{image: "registry.example.com:5000/team/grafana:11", container: "metrics", want: "grafana", first: "grafana"},
 		{image: "postgres@sha256:abc", container: "db", want: "postgres", first: "postgres"},
-		{image: "portainer/portainer-ce:latest", container: "portainer", want: "portainer", first: "portainer-ce"},
+		{image: "portainer/portainer-ce:latest", container: "portainer", want: "portainer-alt", first: "portainer-alt"},
 	}
 	for _, c := range cases {
 		got := iconCandidates(c.image, c.container)

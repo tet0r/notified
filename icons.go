@@ -22,7 +22,7 @@ var typeIcons = map[string]string{
 	"plex": "plex", "jellyfin": "jellyfin", "emby": "emby", "tautulli": "tautulli",
 	"seerr": "seerr", "overseerr": "overseerr", "jellyseerr": "jellyseerr",
 	"qbittorrent": "qbittorrent", "sabnzbd": "sabnzbd", "nzbget": "nzbget", "nzbhydra2": "nzbhydra2",
-	"docker": "docker", "dockerhost": "docker", "portainer": "portainer",
+	"docker": "docker", "dockerhost": "docker", "portainer": "portainer-alt",
 }
 
 func appIconURL(typ string) string {
@@ -37,6 +37,11 @@ var iconAliases = map[string]string{
 	"pms-docker": "plex",
 	"pms":        "plex",
 	"plexinc":    "plex",
+	// Portainer's current logo is black and vanishes on dark backgrounds;
+	// the "alt" icon is the blue one.
+	"portainer":    "portainer-alt",
+	"portainer-ce": "portainer-alt",
+	"portainer-ee": "portainer-alt",
 }
 
 var (
