@@ -62,20 +62,6 @@ container updates still waiting, and integrations currently reporting errors. Ch
 channel, switch it off, or send one immediately under **Settings → Daily overview**. The time
 follows the container's `TZ` setting.
 
-### Pictures in notifications
-
-Every notification carries a picture. Discord can only show images it can download itself, so:
-
-- **Media artwork** (posters) is used when the app supplies a public image URL. For Sonarr, Radarr,
-  Lidarr and Readarr, fill in the integration's URL and API key and Notified will look the poster up
-  when the webhook does not include one.
-- **Plex, Jellyfin and Emby** artwork is uploaded to Discord by Notified, so it works even when the
-  media server is only reachable on your network. Jellyfin and Emby need the server's URL filled in
-  on the integration; Notified only ever downloads artwork from that address.
-- **Containers** get the icon matching their image or name, from the public
-  [dashboard-icons](https://github.com/homarr-labs/dashboard-icons) collection.
-- Anything else falls back to the app's own icon. Icons are loaded by Discord from the jsDelivr CDN.
-
 ### Container updates (Portainer)
 
 Add a **Portainer** integration with your Portainer URL and an administrator access token. Notified
