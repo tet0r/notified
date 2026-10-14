@@ -193,6 +193,8 @@ func (a *App) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"authenticated":  a.authenticated(r),
 		"version":        version,
 		"instance_name":  a.setting("instance_name"),
+		// Shown before login too: the moment it matters most is an unexpected setup screen.
+		"storage_warning": a.storageWarn,
 	})
 }
 

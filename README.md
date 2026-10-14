@@ -126,7 +126,14 @@ Then set the integration's address to `http://that-host:2375`.
 
 ### Compose notes
 
-- `./data` holds the database. Back that folder up and you have backed up everything.
+- `./data` holds the database: every setting, channel and integration. It is a path relative to the
+  compose file, so running the file from another folder, or pasting it into Portainer or another
+  stack manager, starts Notified with empty settings while the old ones sit untouched in the
+  original folder. Use a full path such as `/srv/notified/data:/data` to rule that out.
+- **Settings → Backup** downloads the whole database as one file. To restore, stop Notified, place
+  the file in the data folder as `notified.db`, and start it again.
+- If the data folder would not survive the container being recreated, Notified shows a red warning
+  on every page and logs it at startup.
 - The Docker socket and host filesystem mounts are commented out by default; uncomment only what you use.
   - `/var/run/docker.sock` is for the Docker containers integration. Access to the socket is
     effectively root on the host, even mounted read-only.

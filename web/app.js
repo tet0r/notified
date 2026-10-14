@@ -3,7 +3,7 @@
 // All dynamic content is inserted as text nodes via h(); webhook payloads are
 // untrusted, so nothing in this file assigns innerHTML.
 
-const state = { types: [], channels: [], integrations: [], settings: {}, update: {}, containerUpdates: [], version: '' };
+const state = { types: [], channels: [], integrations: [], settings: {}, update: {}, containerUpdates: [], version: '', storageWarning: '' };
 const app = document.getElementById('app');
 const modalRoot = document.getElementById('modal-root');
 
@@ -119,6 +119,7 @@ async function boot() {
     return;
   }
   state.version = st.version;
+  state.storageWarning = st.storage_warning || '';
   document.title = st.instance_name || 'Notified';
   if (st.setup_required) return authScreen(true);
   if (!st.authenticated) return authScreen(false);
@@ -154,6 +155,9 @@ function authScreen(setup) {
   app.replaceChildren(h('div', { class: 'auth' }, h('div', { class: 'card' },
     h('div', { class: 'brand' }, h('img', { src: 'favicon.svg', alt: '' }), 'Notified'),
     h('p', {}, setup ? 'Welcome. Create the admin account to get started.' : 'Sign in to continue.'),
+    setup ? h('div', { class: 'notice' }, h('b', {}, 'Set this up before? '),
+      'Then Notified has started with an empty data folder and your settings are somewhere else. Stop here and check the container\'s /data volume rather than starting again.') : null,
+    state.storageWarning ? h('div', { class: 'notice danger' }, h('b', {}, 'Settings are not being saved safely. '), state.storageWarning) : null,
     form)));
   user.focus();
 }
@@ -197,7 +201,10 @@ function renderShell() {
       }, 'Update available: ' + verLabel(state.update.latest)) : null,
       h('div', { class: 'foot' }, h('span', {}, verLabel(state.version)), '·', themeButton(), '·',
         h('button', { class: 'linkbtn', onclick: async () => { try { await api('POST', '/logout'); } catch (e) { /* already signed out */ } boot(); } }, 'Sign out'))),
-    mainEl));
+    h('div', { class: 'content' },
+      state.storageWarning ? h('div', { class: 'notice danger banner' }, h('b', {}, 'Settings are not being saved safely. '), state.storageWarning,
+        ' ', h('a', { href: '/api/backup' }, 'Download a backup now')) : null,
+      mainEl)));
 }
 
 // Shows how many container updates are waiting next to the nav item.
@@ -795,7 +802,16 @@ async function settingsPage() {
         }, 'Change password')),
       overviewCard(),
       updatesCard(),
+      backupCard(),
       appearanceCard()));
+}
+
+function backupCard() {
+  return h('div', { class: 'card' }, h('h2', {}, 'Backup'),
+    h('div', { class: 'help' }, 'Downloads one file holding every setting, channel, integration and the history. Keep it somewhere other than this server. It contains your API keys and Discord webhook URLs, so treat it like a password.'),
+    h('div', {}, ' '),
+    h('a', { class: 'btn primary', href: '/api/backup' }, 'Download backup'),
+    h('div', { class: 'help' }, 'To restore: stop Notified, put the file in its data folder named notified.db, and start it again.'));
 }
 
 function overviewCard() {

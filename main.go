@@ -17,9 +17,13 @@ import (
 var version = "dev"
 
 type App struct {
-	db    *sql.DB
-	http  *http.Client
-	sendQ chan sendJob
+	db *sql.DB
+	// dataDir holds the database; storageWarn is set at startup when that
+	// directory would not survive the container being recreated.
+	dataDir     string
+	storageWarn string
+	http        *http.Client
+	sendQ       chan sendJob
 
 	// iconCache remembers which container icon names exist on the CDN.
 	iconCache sync.Map
@@ -40,18 +44,30 @@ func main() {
 	if err := os.MkdirAll(dataDir, 0o750); err != nil {
 		log.Fatalf("create data dir: %v", err)
 	}
-	db, err := openDB(filepath.Join(dataDir, "notified.db"))
+	dbPath := filepath.Join(dataDir, "notified.db")
+	_, statErr := os.Stat(dbPath)
+	isNew := os.IsNotExist(statErr)
+	db, err := openDB(dbPath)
 	if err != nil {
 		log.Fatalf("open database: %v", err)
 	}
 	defer db.Close()
+	if isNew {
+		log.Printf("NOTICE: no database found at %s, so a new empty one was created. If you have used Notified before, it is looking at a different data folder than last time.", dbPath)
+	}
+	storageWarn := checkStorage(dataDir)
+	if storageWarn != "" {
+		log.Printf("WARNING: %s", storageWarn)
+	}
 
 	app := &App{
-		db:         db,
-		http:       &http.Client{Timeout: 30 * time.Second},
-		sendQ:      make(chan sendJob, 1000),
-		polls:      map[int64]*pollStatus{},
-		loginFails: map[string]*loginFail{},
+		db:          db,
+		dataDir:     dataDir,
+		storageWarn: storageWarn,
+		http:        &http.Client{Timeout: 30 * time.Second},
+		sendQ:       make(chan sendJob, 1000),
+		polls:       map[int64]*pollStatus{},
+		loginFails:  map[string]*loginFail{},
 	}
 	if os.Getenv("NOTIFIED_RESET_ADMIN") == "1" {
 		app.resetAdmin()
