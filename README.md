@@ -126,10 +126,11 @@ Then set the integration's address to `http://that-host:2375`.
 
 ### Compose notes
 
-- `./data` holds the database: every setting, channel and integration. It is a path relative to the
-  compose file, so running the file from another folder, or pasting it into Portainer or another
-  stack manager, starts Notified with empty settings while the old ones sit untouched in the
-  original folder. Use a full path such as `/srv/notified/data:/data` to rule that out.
+- The `notified_data` volume holds the database: every setting, channel and integration. A named
+  volume survives updates and redeploys wherever the compose file is run from. Avoid a relative path
+  such as `./data` in Portainer stacks or on Docker Desktop: there it can resolve to a folder that
+  is emptied when Docker restarts, taking every setting with it. A full host path such as
+  `/srv/notified/data:/data` is fine if you prefer a folder you can see.
 - **Settings → Backup** downloads the whole database as one file. To restore, stop Notified, place
   the file in the data folder as `notified.db`, and start it again.
 - If the data folder would not survive the container being recreated, Notified shows a red warning

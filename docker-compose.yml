@@ -12,12 +12,14 @@ services:
     environment:
       - TZ=America/New_York
     volumes:
-      # ALL of Notified's settings live here. "./data" means a folder next to
-      # this file, so starting this file from a different place (or pasting it
-      # into Portainer or another stack manager) silently starts with empty
-      # settings. A full path is safer, for example:
+      # ALL of Notified's settings live in /data. A named volume keeps them
+      # across updates and redeploys wherever this file is run from, including
+      # Portainer stacks and Docker Desktop. Do NOT use a relative path such as
+      # ./data there: it can land in a folder that is emptied on restart.
+      - notified_data:/data
+      # Prefer a folder you can see and back up? Use a full path instead:
       # - /srv/notified/data:/data
-      - ./data:/data
+      #
       # The two mounts below give the container sight of the host, so they are
       # off by default. Uncomment only the ones you use.
       #
@@ -29,3 +31,6 @@ services:
       # watched (and list those paths in the integration) over the whole host:
       # - /mnt/media:/mnt/media:ro
       # - /:/host:ro
+
+volumes:
+  notified_data:

@@ -25,19 +25,31 @@ var anonymousVolumeRE = regexp.MustCompile(`/volumes/[0-9a-f]{64}/_data$`)
 func storageWarning(dataDir string, mountinfo io.Reader) string {
 	dataDir = filepath.ToSlash(filepath.Clean(dataDir))
 	found := false
-	root := ""
+	root, fstype := "", ""
 	sc := bufio.NewScanner(mountinfo)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for sc.Scan() {
 		// Fields: id parent major:minor root mountpoint options ...
 		f := strings.Fields(sc.Text())
 		if len(f) >= 5 && f[4] == dataDir {
-			found, root = true, f[3] // keep the last match: later mounts shadow earlier ones
+			found, root, fstype = true, f[3], "" // keep the last match: later mounts shadow earlier ones
+			// The filesystem type is the first field after the "-" separator.
+			for i := 5; i+1 < len(f); i++ {
+				if f[i] == "-" {
+					fstype = f[i+1]
+					break
+				}
+			}
 		}
 	}
 	switch {
 	case !found:
 		return fmt.Sprintf("Nothing is mounted at %s, so all settings live inside the container and will be lost the next time it is recreated or updated. Add a volume for %s (for example /srv/notified/data:%s) and download a backup first.", dataDir, dataDir, dataDir)
+	case fstype == "tmpfs" || fstype == "ramfs":
+		// Seen with Docker Desktop: a host path such as /data/compose/NN/data
+		// (what "./data" becomes in a Portainer stack) lives in the VM's
+		// memory-backed filesystem and is emptied whenever Docker restarts.
+		return fmt.Sprintf("%s is on a temporary in-memory filesystem, so all settings are erased whenever Docker or the machine restarts. Use a named Docker volume (notified_data:%s) instead, and download a backup first.", dataDir, dataDir)
 	case anonymousVolumeRE.MatchString(root):
 		return fmt.Sprintf("%s is an unnamed Docker volume. Updating with docker compose usually keeps it, but recreating the container any other way (Portainer, a new stack, a different folder) starts with empty settings. Mount a host folder at %s instead, and download a backup first.", dataDir, dataDir)
 	}

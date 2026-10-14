@@ -22,6 +22,7 @@ func TestStorageWarning(t *testing.T) {
 		{"compose project volume", "1491 1481 8:1 /var/lib/docker/volumes/stack_notified-data/_data /data rw,relatime - ext4 /dev/sda1 rw\n", ""},
 		{"anonymous volume", "1491 1481 8:1 /var/lib/docker/volumes/3f2a9c0d1e4b5a693f2a9c0d1e4b5a693f2a9c0d1e4b5a693f2a9c0d1e4b5a69/_data /data rw,relatime - ext4 /dev/sda1 rw\n", "unnamed Docker volume"},
 		{"anonymous volume, docker root on its own disk", "1491 1481 8:17 /volumes/3f2a9c0d1e4b5a693f2a9c0d1e4b5a693f2a9c0d1e4b5a693f2a9c0d1e4b5a69/_data /data rw,relatime - ext4 /dev/sdb1 rw\n", "unnamed Docker volume"},
+		{"bind mount backed by memory (Docker Desktop, Portainer stack with ./data)", "1491 1481 0:31 /data/compose/44/data /data rw,relatime - tmpfs tmpfs rw\n", "temporary in-memory filesystem"},
 		{"nothing mounted", "", "Nothing is mounted at /data"},
 		{"a mount below the data dir does not count", "1491 1481 8:1 /srv/x /data/sub rw,relatime - ext4 /dev/sda1 rw\n", "Nothing is mounted at /data"},
 	}
