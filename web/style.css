@@ -156,6 +156,12 @@ tr.click { cursor: pointer; }
 tr.click:hover td { background: var(--panel-2); }
 td.dim, .dim { color: var(--muted); }
 td.nowrap { white-space: nowrap; }
+td.what { min-width: 220px; }
+.what-title { font-weight: 500; }
+.what-summary { color: var(--text-soft); font-size: 13px; margin-top: 2px; }
+.what-details { color: var(--muted); font-size: 12.5px; margin-top: 1px; }
+.what-error { color: var(--danger); font-size: 12.5px; margin-top: 2px; }
+td { vertical-align: top; }
 .table-wrap { overflow-x: auto; }
 .empty { text-align: center; color: var(--muted); padding: 34px 10px; }
 

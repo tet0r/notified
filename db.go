@@ -319,6 +319,9 @@ type Notification struct {
 	ChannelID       int64  `json:"channel_id"`
 	Embed           string `json:"embed,omitempty"`
 	Payload         string `json:"payload,omitempty"`
+	// Summary and Details are a plain-text digest of the embed for list views.
+	Summary string `json:"summary,omitempty"`
+	Details string `json:"details,omitempty"`
 }
 
 func (a *App) insertNotification(n *Notification) (int64, error) {

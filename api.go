@@ -389,14 +389,15 @@ func (a *App) handleNotificationList(w http.ResponseWriter, r *http.Request) {
 		where, args = append(where, "status=?"), append(args, v)
 	}
 	if v := strings.TrimSpace(q.Get("q")); v != "" {
-		where, args = append(where, "(title LIKE ? OR event LIKE ? OR integration_name LIKE ?)"), append(args, "%"+v+"%", "%"+v+"%", "%"+v+"%")
+		// The embed holds the message text (show names, containers, fields), so searching it finds those too.
+		where, args = append(where, "(title LIKE ? OR event LIKE ? OR integration_name LIKE ? OR embed LIKE ?)"), append(args, "%"+v+"%", "%"+v+"%", "%"+v+"%", "%"+v+"%")
 	}
 	cond := strings.Join(where, " AND ")
 
 	var total int
 	a.db.QueryRow(`SELECT COUNT(*) FROM notifications WHERE `+cond, args...).Scan(&total)
 
-	rows, err := a.db.Query(`SELECT id,created_at,integration_id,integration_name,type,event,title,status,error,channel_id
+	rows, err := a.db.Query(`SELECT id,created_at,integration_id,integration_name,type,event,title,status,error,channel_id,embed
 		FROM notifications WHERE `+cond+` ORDER BY id DESC LIMIT ? OFFSET ?`, append(args, limit, offset)...)
 	if err != nil {
 		httpError(w, http.StatusInternalServerError, err.Error())
@@ -406,13 +407,50 @@ func (a *App) handleNotificationList(w http.ResponseWriter, r *http.Request) {
 	items := []Notification{}
 	for rows.Next() {
 		var n Notification
-		if err := rows.Scan(&n.ID, &n.CreatedAt, &n.IntegrationID, &n.IntegrationName, &n.Type, &n.Event, &n.Title, &n.Status, &n.Error, &n.ChannelID); err != nil {
+		var embed string
+		if err := rows.Scan(&n.ID, &n.CreatedAt, &n.IntegrationID, &n.IntegrationName, &n.Type, &n.Event, &n.Title, &n.Status, &n.Error, &n.ChannelID, &embed); err != nil {
 			httpError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		n.Summary, n.Details = embedDigest(embed)
 		items = append(items, n)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"total": total, "items": items})
+}
+
+// embedDigest turns a stored embed into two short plain-text lines for the
+// history list: what it is about (the description) and the key facts (the
+// first few short fields), e.g. "Severance — S02E03 · Who Is Alive?" and
+// "Quality: WEBDL-2160p · Size: 7.0 GB · Indexer: NZBgeek".
+func embedDigest(raw string) (summary, details string) {
+	if raw == "" {
+		return "", ""
+	}
+	var e Embed
+	if json.Unmarshal([]byte(raw), &e) != nil {
+		return "", ""
+	}
+	plain := strings.NewReplacer("**", "", "__", "", "`", "").Replace
+	var lines []string
+	for _, l := range strings.Split(plain(e.Description), "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			lines = append(lines, l)
+		}
+	}
+	summary = trunc(strings.Join(lines, " — "), 200)
+	var facts []string
+	for _, f := range e.Fields {
+		v := strings.TrimSpace(plain(f.Value))
+		// Long free-text fields (release names, summaries, errors) stay in the detail view.
+		if v == "" || strings.Contains(v, "\n") || len([]rune(v)) > 60 {
+			continue
+		}
+		facts = append(facts, f.Name+": "+v)
+		if len(facts) == 4 {
+			break
+		}
+	}
+	return summary, strings.Join(facts, " · ")
 }
 
 func (a *App) getNotification(id int64) (*Notification, error) {

@@ -306,12 +306,16 @@ async function dashboardPage() {
 function notificationTable(items, onChange) {
   if (!items.length) return h('div', { class: 'empty' }, 'No notifications yet.');
   return h('table', {},
-    h('thead', {}, h('tr', {}, ['Time', 'Integration', 'Event', 'Title', 'Status'].map((c) => h('th', {}, c)))),
+    h('thead', {}, h('tr', {}, ['Time', 'Integration', 'Event', 'What happened', 'Status'].map((c) => h('th', {}, c)))),
     h('tbody', {}, items.map((n) => h('tr', { class: 'click', onclick: () => notificationModal(n.id, onChange).catch(fail) },
       h('td', { class: 'dim nowrap', title: when(n.created_at) }, ago(n.created_at)),
       h('td', {}, n.integration_name),
       h('td', { class: 'dim' }, n.event),
-      h('td', {}, n.title || '—'),
+      h('td', { class: 'what' },
+        h('div', { class: 'what-title' }, n.title || '—'),
+        n.summary ? h('div', { class: 'what-summary' }, n.summary) : null,
+        n.details ? h('div', { class: 'what-details' }, n.details) : null,
+        n.status === 'failed' && n.error ? h('div', { class: 'what-error' }, n.error) : null),
       h('td', {}, h('span', { class: 'badge ' + n.status, title: n.error || '' }, n.status))))));
 }
 
@@ -381,7 +385,7 @@ async function historyPage() {
   };
   const set = (k) => (e) => { filters[k] = e.target.value; filters.offset = 0; draw().catch(fail); };
 
-  const search = h('input', { type: 'search', placeholder: 'Search title or event…', oninput: set('q') });
+  const search = h('input', { type: 'search', placeholder: 'Search titles, names, containers…', oninput: set('q') });
   const status = h('select', { onchange: set('status') },
     h('option', { value: '' }, 'Any status'), ['sent', 'failed', 'skipped', 'queued'].map((s) => h('option', { value: s }, s)));
   const integ = h('select', { onchange: set('integration_id') },
