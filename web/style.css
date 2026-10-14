@@ -121,7 +121,7 @@ a.btn:hover { text-decoration: none; }
 label.field { display: block; margin-bottom: 14px; }
 label.field > span { display: block; font-weight: 500; margin-bottom: 5px; }
 label.field small, .help { display: block; color: var(--muted); font-size: 12.5px; margin-top: 4px; }
-input[type=text], input[type=password], input[type=number], input[type=search], input[type=time], select, textarea {
+input[type=text], input[type=password], input[type=number], input[type=search], input[type=time], input[type=file], select, textarea {
   width: 100%; background: var(--input-bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px;
   padding: 8px 10px; font: inherit;
 }

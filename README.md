@@ -131,8 +131,9 @@ Then set the integration's address to `http://that-host:2375`.
   such as `./data` in Portainer stacks or on Docker Desktop: there it can resolve to a folder that
   is emptied when Docker restarts, taking every setting with it. A full host path such as
   `/srv/notified/data:/data` is fine if you prefer a folder you can see.
-- **Settings → Backup** downloads the whole database as one file. To restore, stop Notified, place
-  the file in the data folder as `notified.db`, and start it again.
+- **Settings → Backup** downloads the whole database as one file, and **Restore** uploads one to
+  replace everything. Before a restore, the current data is saved in the data folder as
+  `notified-before-restore-<date>.db`, so a mistaken restore can be undone the same way.
 - If the data folder would not survive the container being recreated, Notified shows a red warning
   on every page and logs it at startup.
 - The Docker socket and host filesystem mounts are commented out by default; uncomment only what you use.

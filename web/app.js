@@ -807,11 +807,38 @@ async function settingsPage() {
 }
 
 function backupCard() {
+  const file = h('input', { type: 'file', accept: '.db,application/octet-stream' });
+  const restore = h('button', {
+    class: 'btn danger', onclick: async () => {
+      const f = file.files[0];
+      if (!f) return toast('Choose a backup file first', true);
+      if (!confirm('Replace ALL current settings, channels, integrations and history with "' + f.name + '"?\n\n'
+        + 'The admin password becomes the one stored in the backup. A copy of the current data is saved in the data folder first.')) return;
+      restore.disabled = true;
+      restore.textContent = 'Restoring…';
+      try {
+        const body = new FormData();
+        body.append('backup', f);
+        const res = await fetch('/api/restore', { method: 'POST', body, credentials: 'same-origin', headers: { 'X-Notified': '1' } });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Restore failed (' + res.status + ')');
+        toast('Backup restored. The previous data was saved as ' + data.previous);
+        setTimeout(boot, 1200);
+      } catch (e) {
+        fail(e);
+        restore.disabled = false;
+        restore.textContent = 'Restore';
+      }
+    },
+  }, 'Restore');
   return h('div', { class: 'card' }, h('h2', {}, 'Backup'),
     h('div', { class: 'help' }, 'Downloads one file holding every setting, channel, integration and the history. Keep it somewhere other than this server. It contains your API keys and Discord webhook URLs, so treat it like a password.'),
     h('div', {}, ' '),
     h('a', { class: 'btn primary', href: '/api/backup' }, 'Download backup'),
-    h('div', { class: 'help' }, 'To restore: stop Notified, put the file in its data folder named notified.db, and start it again.'));
+    h('h3', {}, 'Restore from a backup'),
+    h('div', { class: 'help' }, 'Replaces everything with the contents of a backup file. You stay signed in; the next sign-in uses the password stored in the backup.'),
+    h('div', {}, ' '),
+    h('div', { class: 'copybox' }, file, restore));
 }
 
 function overviewCard() {
