@@ -141,6 +141,7 @@ input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); }
 .icard .top { display: flex; align-items: center; gap: 10px; }
 .icard .name { font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .icard .meta { color: var(--muted); font-size: 12.5px; }
+.icard .warn-note { color: var(--amber); font-size: 12.5px; }
 .icard .err { color: var(--danger); font-size: 12.5px; word-break: break-word; }
 .tile { width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center; flex-shrink: 0; }
 .tile img { width: 100%; height: 100%; object-fit: contain; display: block; }

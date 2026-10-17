@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -140,6 +141,14 @@ func (a *App) handleHook(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(raw) > 256<<10 {
 		raw = raw[:256<<10]
+	}
+
+	// Remember when an *arr app posts to another app's webhook URL, so the
+	// integration can point out the mix-up.
+	if _, isStarr := starrKinds[in.Type]; isStarr {
+		if sender := detectStarrKind(p, in.Type); sender != in.Type {
+			a.stateSet(in.ID, "other_sender", sender+":"+strconv.FormatInt(time.Now().Unix(), 10))
+		}
 	}
 
 	event, e, ok := def.Parse(in, p)

@@ -488,7 +488,8 @@ function integrationCard(i) {
       h('div', { class: 'grow' }, h('div', { class: 'name' }, i.name), h('div', { class: 'meta' }, def.label)),
       badge),
     h('div', { class: 'meta' }, meta.join(' · ')),
-    i.enabled && i.status && i.status.last_error ? h('div', { class: 'err' }, i.status.last_error) : null);
+    i.enabled && i.status && i.status.last_error ? h('div', { class: 'err' }, i.status.last_error) : null,
+    i.notice ? h('div', { class: 'warn-note' }, i.notice) : null);
 }
 
 // ignoreWidget edits a container ignore list: pick a detected container to

@@ -107,6 +107,24 @@ type integrationOut struct {
 	*Integration
 	Status    *integrationStatus `json:"status,omitempty"`
 	LastEvent int64              `json:"last_event"`
+	// Notice explains a configuration mix-up spotted in recent webhooks.
+	Notice string `json:"notice,omitempty"`
+}
+
+// senderNotice warns when another *arr app has posted to this integration's
+// webhook URL in the last week, e.g. Radarr configured with Sonarr's URL.
+func (a *App) senderNotice(in *Integration) string {
+	v, ok := a.stateGet(in.ID, "other_sender")
+	if !ok {
+		return ""
+	}
+	sender, at, _ := strings.Cut(v, ":")
+	unix, _ := strconv.ParseInt(at, 10, 64)
+	if time.Since(time.Unix(unix, 0)) > 7*24*time.Hour {
+		return ""
+	}
+	mine, theirs := starrKinds[in.Type].label, starrKinds[sender].label
+	return fmt.Sprintf("%s is sending its webhooks to this %s integration. Add a separate %s integration and give %s that integration's webhook URL, so its events get their own settings and channel.", theirs, mine, theirs, theirs)
 }
 
 func (a *App) handleIntegrationList(w http.ResponseWriter, r *http.Request) {
@@ -128,7 +146,7 @@ func (a *App) handleIntegrationList(w http.ResponseWriter, r *http.Request) {
 	out := make([]integrationOut, 0, len(list))
 	a.pollMu.Lock()
 	for _, in := range list {
-		o := integrationOut{Integration: in, LastEvent: last[in.ID]}
+		o := integrationOut{Integration: in, LastEvent: last[in.ID], Notice: a.senderNotice(in)}
 		if st := a.polls[in.ID]; st != nil && !st.lastRun.IsZero() {
 			o.Status = &integrationStatus{LastRun: st.lastRun.Unix(), LastError: st.lastErr}
 		}

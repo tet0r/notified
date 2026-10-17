@@ -153,9 +153,34 @@ func joinLimited(lines []string, max int) string {
 	return strings.Join(out, "\n")
 }
 
-func parseStarr(kind string) parseFunc {
-	k := starrKinds[kind]
+// detectStarrKind works out which *arr app sent a webhook from the payload
+// itself, so an event still reads correctly when an app was pointed at
+// another app's webhook URL. The media object is decisive; for events without
+// one (health, updates) the instance name is used if it names an app.
+func detectStarrKind(p J, fallback string) string {
+	switch {
+	case len(p.Obj("series")) > 0 || len(p.Arr("episodes")) > 0:
+		return "sonarr"
+	case len(p.Obj("movie")) > 0 || len(p.Obj("remoteMovie")) > 0:
+		return "radarr"
+	case len(p.Obj("artist")) > 0 || len(p.Arr("albums")) > 0 || len(p.Obj("album")) > 0:
+		return "lidarr"
+	case len(p.Obj("author")) > 0 || len(p.Arr("books")) > 0 || len(p.Obj("book")) > 0:
+		return "readarr"
+	}
+	name := strings.ToLower(p.Str("instanceName"))
+	for _, kind := range []string{"sonarr", "radarr", "lidarr", "readarr", "prowlarr"} {
+		if strings.Contains(name, kind) {
+			return kind
+		}
+	}
+	return fallback
+}
+
+func parseStarr(configured string) parseFunc {
 	return func(in *Integration, p J) (string, Embed, bool) {
+		kind := detectStarrKind(p, configured)
+		k := starrKinds[kind]
 		raw := strings.ToLower(p.Str("eventType"))
 		event, known := starrEvents[raw]
 		if !known {
@@ -169,6 +194,13 @@ func parseStarr(kind string) parseFunc {
 		subject, detail, link, poster := starrSubject(kind, p)
 		e.URL = link
 		e.Thumb(poster)
+		if kind != configured {
+			// Show the real sender's icon; the integration's own would be wrong.
+			e.Author.IconURL = appIconURL(kind)
+			if e.Thumbnail == nil {
+				e.Thumb(appIconURL(kind))
+			}
+		}
 		if subject != "" {
 			e.Description = "**" + subject + "**"
 			if detail != "" {
