@@ -160,3 +160,8 @@ Then set the integration's address to `http://that-host:2375`.
 ## Not included (yet)
 
 Discord bot (slash commands, reactions), TRaSH guide sync, media requests from Discord, and multi-user accounts.
+
+## License
+
+MIT, see [LICENSE](LICENSE). The app icons in `web/icons` come from
+[dashboard-icons](https://github.com/homarr-labs/dashboard-icons) under the Apache License 2.0.
