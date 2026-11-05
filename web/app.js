@@ -120,6 +120,7 @@ async function boot() {
   }
   state.version = st.version;
   state.storageWarning = st.storage_warning || '';
+  state.secretWarning = st.secret_warning || '';
   document.title = st.instance_name || 'Notified';
   if (st.setup_required) return authScreen(true);
   if (!st.authenticated) return authScreen(false);
@@ -204,6 +205,7 @@ function renderShell() {
     h('div', { class: 'content' },
       state.storageWarning ? h('div', { class: 'notice danger banner' }, h('b', {}, 'Settings are not being saved safely. '), state.storageWarning,
         ' ', h('a', { href: '/api/backup' }, 'Download a backup now')) : null,
+      state.secretWarning ? h('div', { class: 'notice danger banner' }, h('b', {}, 'Some saved secrets can\'t be read. '), state.secretWarning) : null,
       mainEl)));
 }
 
@@ -412,7 +414,7 @@ async function channelsPage() {
   state.channels = await api('GET', '/channels');
   const rows = state.channels.map((c) => h('tr', {},
     h('td', {}, h('b', {}, c.name)),
-    h('td', { class: 'dim mono' }, c.webhook_url.replace(/(\/webhooks\/\d+\/).+$/, '$1••••••••')),
+    h('td', { class: 'dim mono' }, c.webhook_set ? c.webhook_hint : h('span', { class: 'what-error' }, 'Not set: edit to paste the URL')),
     h('td', { class: 'nowrap' }, h('div', { class: 'row end' },
       h('button', {
         class: 'btn small', onclick: (e) => busy(e.target, async () => {
@@ -431,10 +433,14 @@ async function channelsPage() {
 
 function channelModal(c) {
   const name = h('input', { type: 'text', value: c ? c.name : '', placeholder: 'e.g. #media-alerts' });
-  const url = h('input', { type: 'text', value: c ? c.webhook_url : '', placeholder: 'https://discord.com/api/webhooks/…' });
+  // The saved URL never comes back from the server; leave this blank to keep it.
+  const url = h('input', {
+    type: 'text', value: '', autocomplete: 'off',
+    placeholder: c && c.webhook_set ? 'Saved (' + c.webhook_hint + '). Paste a new URL to replace it.' : 'https://discord.com/api/webhooks/…',
+  });
   modal(c ? 'Edit channel' : 'Add channel', [
     field('Name', name, 'A label for you; it does not need to match Discord.'),
-    field('Discord webhook URL', url, 'Discord: channel settings → Integrations → Webhooks → New Webhook → Copy Webhook URL.'),
+    field('Discord webhook URL', url, (c && c.webhook_set ? 'Stored encrypted and never shown again. ' : '') + 'Discord: channel settings → Integrations → Webhooks → New Webhook → Copy Webhook URL.'),
   ], (close) => [
     c ? h('button', {
       class: 'btn danger left', onclick: async () => {
@@ -558,6 +564,7 @@ function integrationModal(existing, newType) {
   const channel = channelSelect(i.channel_id, '— none —');
 
   const inputs = {};
+  const clearSecrets = new Set();
   const fields = def.fields.map((f) => {
     const val = i.config[f.key] !== undefined ? i.config[f.key] : (f.default || '');
     if (f.kind === 'containers') {
@@ -569,9 +576,28 @@ function integrationModal(existing, newType) {
       inputs[f.key] = h('input', { type: 'checkbox', checked: val === 'true' });
       return h('label', { class: 'check' }, inputs[f.key], f.label);
     }
+    if (f.kind === 'password') {
+      // Secrets are write-only: the saved value never comes back from the
+      // server. Blank keeps it; typing replaces it; Clear erases it.
+      const isSet = !!(i.secrets_set && i.secrets_set[f.key]);
+      const input = h('input', { type: 'password', value: '', autocomplete: 'new-password', placeholder: isSet ? 'Saved. Type a new value to replace it.' : '' });
+      inputs[f.key] = input;
+      const clearBtn = isSet ? h('button', {
+        class: 'btn small', type: 'button', onclick: () => {
+          if (!confirm('Remove the saved ' + f.label + '?')) return;
+          clearSecrets.add(f.key);
+          input.value = '';
+          input.placeholder = 'Will be removed when you save.';
+          clearBtn.disabled = true;
+        },
+      }, 'Clear') : null;
+      input.addEventListener('input', () => clearSecrets.delete(f.key));
+      return field(f.label, clearBtn ? h('div', { class: 'copybox' }, input, clearBtn) : input,
+        [f.help, isSet ? 'Stored encrypted.' : ''].filter(Boolean).join(' '));
+    }
     inputs[f.key] = f.kind === 'textarea'
       ? h('textarea', { value: val })
-      : h('input', { type: f.kind === 'password' ? 'password' : f.kind === 'number' ? 'number' : 'text', value: val, autocomplete: 'off' });
+      : h('input', { type: f.kind === 'number' ? 'number' : 'text', value: val, autocomplete: 'off' });
     return field(f.label, inputs[f.key], f.help);
   });
 
@@ -590,7 +616,7 @@ function integrationModal(existing, newType) {
     for (const f of def.fields) config[f.key] = f.kind === 'bool' ? String(inputs[f.key].checked) : inputs[f.key].value;
     const events = {};
     for (const ev of def.events) events[ev.key] = { enabled: eventInputs[ev.key].on.checked, channel_id: Number(eventInputs[ev.key].ch.value) };
-    return { type: def.type, name: name.value, enabled: enabled.checked, channel_id: Number(channel.value), config, events };
+    return { type: def.type, name: name.value, enabled: enabled.checked, channel_id: Number(channel.value), config, events, clear_secrets: [...clearSecrets] };
   };
 
   let hookBox = null;
@@ -837,7 +863,7 @@ function backupCard() {
     },
   }, 'Restore');
   return h('div', { class: 'card' }, h('h2', {}, 'Backup'),
-    h('div', { class: 'help' }, 'Downloads one file holding every setting, channel, integration and the history. Keep it somewhere other than this server. It contains your API keys and Discord webhook URLs, so treat it like a password.'),
+    h('div', { class: 'help' }, 'Downloads one file holding every setting, channel, integration and the history, so it can be restored anywhere. Inside the backup your API keys and Discord webhook URLs are readable, so keep it somewhere safe and treat it like a password.'),
     h('div', {}, ' '),
     h('a', { class: 'btn primary', href: '/api/backup' }, 'Download backup'),
     h('h3', {}, 'Restore from a backup'),

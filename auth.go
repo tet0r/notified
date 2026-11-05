@@ -195,6 +195,7 @@ func (a *App) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"instance_name":  a.setting("instance_name"),
 		// Shown before login too: the moment it matters most is an unexpected setup screen.
 		"storage_warning": a.storageWarn,
+		"secret_warning":  a.secretWarn,
 	})
 }
 

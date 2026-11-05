@@ -4,158 +4,95 @@
 
 A self-hosted notification hub for a media server stack, inspired by Notifiarr. Your apps send
 webhooks to Notified, Notified watches the things that can't send webhooks, and everything is
-delivered to Discord as rich embeds. One small container, one SQLite file, no external services.
-
-## Screenshots
+delivered to Discord as rich embeds. One small container, one SQLite file.
 
 ![Dashboard showing notification counts, a seven-day chart, integration health and recent notifications](assets/screenshot-dashboard.png)
 
 ![The Add integration dialog listing every supported app by group](assets/screenshot-integrations.png)
 
-## What it does
+## Integrations
 
-| Group | Integration | How it works | Events |
-|---|---|---|---|
-| \*arr Apps | Sonarr, Radarr, Lidarr, Readarr, Prowlarr | Webhook (+ optional queue polling) | Grab, import, upgrade, rename, added, deleted, health, health restored, app update, manual interaction, stuck queue items |
-| Media servers | Plex | Webhook (Plex Pass) | Play, pause, resume, stop, watched, new in library, new device, database backup/corruption |
-| Media servers | Jellyfin | Webhook (Webhook plugin) | Play, stop, new in library, failed sign-ins, user lockouts, failed tasks, plugin changes, restart required |
-| Media servers | Emby | Webhook (Emby Premiere) | Play, pause, resume, stop, new in library, failed sign-ins, update available, restart required, plugin changes |
-| Media monitoring | Tautulli | Webhook | Play, stop, pause, resume, watched, errors, buffering, recently added, server up/down, updates |
-| Requests | Seerr, Overseerr, Jellyseerr | Webhook | Pending, approved, auto-requested, available, declined, failed, issues |
-| Downloaders | qBittorrent | Polling | Stalled downloads, errored torrents |
-| Downloaders | SABnzbd | Polling | Failed downloads, queue paused/resumed |
-| Downloaders | NZBGet | Polling | Failed downloads (with reason), downloads paused/resumed |
-| Indexers | NZBHydra 2 | Polling | Indexer disabled after errors, indexer re-enabled |
-| System | System monitor | Polling | CPU, memory and disk thresholds, periodic snapshot |
-| System | Docker containers | Polling (Docker socket) | Container stopped, started, unhealthy, healthy |
-| System | Portainer | Polling (Portainer API) | Container update available; one-click update from the web UI; update succeeded or failed |
-| System | Docker updates | Polling (Docker API, e.g. a socket proxy) | Same as Portainer, for Docker hosts without it such as OpenMediaVault Compose |
-| System | Service check | Polling | HTTP or TCP target down / recovered |
+| Group | Apps | Notifies about |
+|---|---|---|
+| \*arr Apps | Sonarr, Radarr, Lidarr, Readarr, Prowlarr | Grabs, imports, upgrades, health, updates, stuck queue items |
+| Media servers | Plex, Jellyfin, Emby | Playback, new items, sign-ins, server events |
+| Media monitoring | Tautulli | Playback, recently added, server up/down |
+| Requests | Seerr, Overseerr, Jellyseerr | Requests and issues |
+| Downloaders | qBittorrent, SABnzbd, NZBGet | Stalled or failed downloads, pauses |
+| Indexers | NZBHydra 2 | Indexers disabled and re-enabled |
+| System | System monitor, Docker containers, Service check | CPU, memory and disk, container state, services down |
+| Container updates | Portainer, Docker updates | New image builds, with one-click updates |
 
-Every event can be switched on or off and routed to its own Discord channel per integration.
-The History page keeps what was received and sent, shows the raw payload, and can resend.
+Each event can be switched off or sent to its own Discord channel. A daily overview summarises the
+last 24 hours, and the History page shows everything that was received and sent.
 
 ## Run it
 
-Copy [docker-compose.yml](docker-compose.yml) to your Docker host, then:
+Copy [docker-compose.yml](docker-compose.yml) to your Docker host and run:
 
 ```bash
 docker compose up -d
 ```
 
-This pulls `ghcr.io/tet0r/notified:latest` (amd64 and arm64), which CI publishes from `main`.
-To build from source instead,
-clone the repo, switch the compose file to `build: .` and run `docker compose up -d --build`.
+Open `http://<host>:8080`, create the admin account, then:
 
-Open `http://<host>:8080` and create the admin account. Then:
+1. **Channels**: add a Discord webhook URL (Discord: channel settings → Integrations → Webhooks).
+2. **Integrations**: add your apps. Each one shows its webhook URL and how to set it up.
+3. **Settings**: set **Base URL** to the address your apps use to reach Notified.
 
-1. **Channels** → add a Discord webhook URL (Discord: channel settings → Integrations → Webhooks → New Webhook).
-2. **Integrations** → add an app. Each integration gets its own webhook URL and setup steps to paste into the app.
-3. **Settings** → set **Base URL** to the address your apps use to reach Notified (for example
-   `http://notified:8080` on a shared Docker network) so the displayed webhook URLs are correct.
+To update: `docker compose pull && docker compose up -d`, or "pull and redeploy" in Portainer.
 
-### Daily overview
+## Your data
 
-Once a day (midnight by default) Notified posts a summary of the previous 24 hours: how many
-notifications were sent, the busiest integrations and events, anything that failed to deliver,
-container updates still waiting, and integrations currently reporting errors. Change the time and
-channel, switch it off, or send one immediately under **Settings → Daily overview**. The time
-follows the container's `TZ` setting.
+- Everything lives in the `notified_data` volume. Keep it a named volume (or a full host path):
+  a relative path such as `./data` in a Portainer stack or on Docker Desktop can be wiped on restart.
+- **Settings → Backup** downloads everything as one file and **Restore** puts it back.
+- API keys, passwords and Discord webhook URLs are stored encrypted and never sent back to the
+  browser; forms show that a value is saved and let you replace or clear it. The key is created
+  automatically in the data folder. To keep it separate from the data, set `NOTIFIED_SECRET_KEY`
+  instead, and keep a copy: losing it means re-entering those values.
+- Backups contain those secrets in readable form so they restore anywhere. Store them safely.
 
-### Container updates (Portainer)
+## Container updates
 
-Add a **Portainer** integration with your Portainer URL and an administrator access token. Notified
-then compares each running container's image with the registry and lists the ones that are behind
-under **Container updates**, where **Update** asks Portainer to pull the image and recreate the
-container with the same settings.
+Notified compares running containers with their registry and lists newer builds of the same tag
+under **Container updates**, where one click pulls the image and recreates the container.
 
-- It detects a newer build of the *same tag* (for example `latest` being re-pushed). It does not
-  tell you that `4.1` exists when you run `4.0`.
-- Never offered: Notified itself, containers in stacks created outside Portainer (shown as
-  *Limited* control in Portainer), swarm services, images pinned to a digest, locally built images.
-- The Discord notice links to the page; the update itself always needs a click in the web UI.
-- If an update fails partway, check the container in Portainer: it can be left stopped or renamed
-  with an `-old` suffix.
+- **Portainer**: add the integration with your Portainer URL and an admin access token.
+- **Without Portainer** (for example OpenMediaVault): run a socket proxy on that host and add a
+  **Docker updates** integration pointing at `http://that-host:2375`:
 
-### Container updates without Portainer (OpenMediaVault and others)
+  ```yaml
+  services:
+    dockerproxy:
+      image: tecnativa/docker-socket-proxy:latest
+      restart: unless-stopped
+      environment: [CONTAINERS=1, IMAGES=1, NETWORKS=1, DISTRIBUTION=1, POST=1]
+      ports: ["2375:2375"]
+      volumes: ["/var/run/docker.sock:/var/run/docker.sock"]
+  ```
 
-The **Docker updates** integration does the same job by talking to a Docker host directly, and
-performs the pull-and-recreate itself. On that host, run a socket proxy:
+  The proxy has no login, so keep port 2375 on your LAN and firewall it to Notified if you can.
 
-```yaml
-services:
-  dockerproxy:
-    image: tecnativa/docker-socket-proxy:latest
-    container_name: dockerproxy
-    restart: unless-stopped
-    environment:
-      - CONTAINERS=1
-      - IMAGES=1
-      - NETWORKS=1
-      - DISTRIBUTION=1
-      - POST=1
-    ports:
-      - "2375:2375"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-```
+Notified never updates itself, the socket proxy, or containers Portainer shows as *Limited*.
 
-Then set the integration's address to `http://that-host:2375`.
-
-- **The proxy has no login.** Anything that can reach port 2375 can control that host's
-  containers. Keep it on your LAN and firewall the port to Notified's address if you can.
-- Updating keeps the old container (renamed `name-old`) until the new one has started, and puts it
-  back if creating or starting the new one fails.
-- Only public images can be checked and pulled. Data in anonymous volumes is not carried over to the
-  new container; named volumes and bind mounts are.
-- Never offered: Notified itself, the socket proxy, swarm services, digest-pinned and local images.
-
-### Compose notes
-
-- The `notified_data` volume holds the database: every setting, channel and integration. A named
-  volume survives updates and redeploys wherever the compose file is run from. Avoid a relative path
-  such as `./data` in Portainer stacks or on Docker Desktop: there it can resolve to a folder that
-  is emptied when Docker restarts, taking every setting with it. A full host path such as
-  `/srv/notified/data:/data` is fine if you prefer a folder you can see.
-- **Settings → Backup** downloads the whole database as one file, and **Restore** uploads one to
-  replace everything. Before a restore, the current data is saved in the data folder as
-  `notified-before-restore-<date>.db`, so a mistaken restore can be undone the same way.
-- If the data folder would not survive the container being recreated, Notified shows a red warning
-  on every page and logs it at startup.
-- The Docker socket and host filesystem mounts are commented out by default; uncomment only what you use.
-  - `/var/run/docker.sock` is for the Docker containers integration. Access to the socket is
-    effectively root on the host, even mounted read-only.
-  - For System monitor disk usage, mount the specific disks you want watched and list those paths in
-    the integration, rather than the whole host.
-- Set `TZ` to your timezone so the dashboard's days line up.
-
-### Environment variables
+## Settings by environment variable
 
 | Variable | Default | Purpose |
 |---|---|---|
+| `TZ` | UTC | Timezone for the dashboard and the daily overview |
+| `NOTIFIED_SECRET_KEY` | unset | Your own key for encrypting stored secrets |
 | `NOTIFIED_PORT` | `8080` | Listen port |
-| `NOTIFIED_DATA_DIR` | `/data` | Where the SQLite database lives |
-| `NOTIFIED_RESET_ADMIN` | unset | Set to `1` for one start to clear the admin account and run setup again |
-| `NOTIFIED_UPDATE_URL` | this repo | GitHub "latest release" API URL to check for updates (for forks) |
-| `TZ` | UTC | Timezone |
+| `NOTIFIED_DATA_DIR` | `/data` | Where the database lives |
+| `NOTIFIED_RESET_ADMIN` | unset | Set to `1` for one start to clear the admin login |
 
-## Security
+## Security notes
 
-- **First run:** whoever opens the web UI first creates the admin account. Do that before exposing
-  the port to anyone else.
-- **Login:** one admin account; repeated failed logins from an address are locked out for ten
-  minutes. Put Notified behind a reverse proxy with HTTPS if it is reachable from outside your LAN.
-- **Webhook URLs** contain a random per-integration token; anyone who has the URL can post
-  notifications to that integration. They can appear in the sending app's settings and in proxy
-  logs. Regenerate one from the integration's editor if it leaks.
-- **Stored secrets:** API keys, access tokens and Discord webhook URLs are stored unencrypted in the
-  SQLite file and are shown to the logged-in admin. Protect the `data` folder and its backups.
-- **Container updates:** the Portainer token, or an open Docker socket proxy, lets Notified recreate
-  containers. Anyone who can log in to Notified gets that ability too.
-- **Outbound requests:** besides the apps you configure and Discord, Notified contacts GitHub (update
-  check) and the jsDelivr CDN (container icons).
-- The container runs as root so it can read a mounted Docker socket; `no-new-privileges` is set in
-  the sample compose file.
+- Create the admin account before anyone else can reach the port, and use a reverse proxy with
+  HTTPS if Notified is reachable from outside your network.
+- Anyone with an integration's webhook URL can post to it; regenerate the URL if it leaks.
+- Anyone who can sign in can recreate containers through Portainer or the socket proxy.
+- Besides your apps and Discord, Notified contacts GitHub (update check) and jsDelivr (icons).
 
 ## Not included (yet)
 

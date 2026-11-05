@@ -162,6 +162,10 @@ func (a *App) handleRestore(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusInternalServerError, "restore failed and nothing was changed: "+err.Error())
 		return
 	}
+	// Backups hold their secrets decrypted; encrypt them with this install's key.
+	if _, err := a.encryptExisting(); err != nil {
+		log.Printf("restore: could not encrypt the restored secrets: %v", err)
+	}
 	// Restart every poller with the restored configuration.
 	a.pollMu.Lock()
 	clear(a.polls)

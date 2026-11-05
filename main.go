@@ -22,8 +22,10 @@ type App struct {
 	// directory would not survive the container being recreated.
 	dataDir     string
 	storageWarn string
-	http        *http.Client
-	sendQ       chan sendJob
+	// secretWarn is set when stored secrets could not be decrypted.
+	secretWarn string
+	http       *http.Client
+	sendQ      chan sendJob
 
 	// iconCache remembers which container icon names exist on the CDN.
 	iconCache sync.Map
@@ -68,6 +70,9 @@ func main() {
 		sendQ:       make(chan sendJob, 1000),
 		polls:       map[int64]*pollStatus{},
 		loginFails:  map[string]*loginFail{},
+	}
+	if err := app.initSecrets(dataDir); err != nil {
+		log.Fatalf("secret key: %v", err)
 	}
 	if os.Getenv("NOTIFIED_RESET_ADMIN") == "1" {
 		app.resetAdmin()

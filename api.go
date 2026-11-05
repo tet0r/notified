@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -31,7 +32,11 @@ func (a *App) handleChannelList(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, list)
+	out := make([]channelOut, 0, len(list))
+	for _, c := range list {
+		out = append(out, toChannelOut(c))
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (a *App) handleChannelSave(w http.ResponseWriter, r *http.Request) {
@@ -39,13 +44,26 @@ func (a *App) handleChannelSave(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &c) {
 		return
 	}
+	if r.Method != http.MethodPost && strings.TrimSpace(c.WebhookURL) == "" {
+		// Left blank while editing: keep the saved URL.
+		old, err := a.getChannel(pathID(r))
+		if err != nil {
+			httpError(w, http.StatusNotFound, "channel not found")
+			return
+		}
+		if old.WebhookURL == "" {
+			httpError(w, http.StatusBadRequest, "the saved webhook URL could not be read; paste it again")
+			return
+		}
+		c.WebhookURL = old.WebhookURL
+	}
 	if err := validateChannel(&c); err != nil {
 		httpError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if r.Method == http.MethodPost {
 		c.CreatedAt = time.Now().Unix()
-		res, err := a.db.Exec(`INSERT INTO channels(name,webhook_url,created_at) VALUES(?,?,?)`, c.Name, c.WebhookURL, c.CreatedAt)
+		res, err := a.db.Exec(`INSERT INTO channels(name,webhook_url,created_at) VALUES(?,?,?)`, c.Name, sealSecret(c.WebhookURL), c.CreatedAt)
 		if err != nil {
 			httpError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -53,7 +71,7 @@ func (a *App) handleChannelSave(w http.ResponseWriter, r *http.Request) {
 		c.ID, _ = res.LastInsertId()
 	} else {
 		c.ID = pathID(r)
-		res, err := a.db.Exec(`UPDATE channels SET name=?, webhook_url=? WHERE id=?`, c.Name, c.WebhookURL, c.ID)
+		res, err := a.db.Exec(`UPDATE channels SET name=?, webhook_url=? WHERE id=?`, c.Name, sealSecret(c.WebhookURL), c.ID)
 		if err != nil {
 			httpError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -63,7 +81,7 @@ func (a *App) handleChannelSave(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	writeJSON(w, http.StatusOK, c)
+	writeJSON(w, http.StatusOK, toChannelOut(c))
 }
 
 func (a *App) handleChannelDelete(w http.ResponseWriter, r *http.Request) {
@@ -104,11 +122,63 @@ type integrationStatus struct {
 }
 
 type integrationOut struct {
-	*Integration
+	redactedIntegration
 	Status    *integrationStatus `json:"status,omitempty"`
 	LastEvent int64              `json:"last_event"`
 	// Notice explains a configuration mix-up spotted in recent webhooks.
 	Notice string `json:"notice,omitempty"`
+}
+
+// redactedIntegration is an integration as sent to the browser: secret
+// settings are never included, only whether each one is set.
+type redactedIntegration struct {
+	*Integration
+	SecretsSet map[string]bool `json:"secrets_set"`
+}
+
+func redactSecrets(in *Integration) redactedIntegration {
+	cp := *in
+	cp.Config = make(map[string]string, len(in.Config))
+	set := map[string]bool{}
+	for k, v := range in.Config {
+		if isSecretField(in.Type, k) {
+			set[k] = v != ""
+			continue
+		}
+		cp.Config[k] = v
+	}
+	return redactedIntegration{Integration: &cp, SecretsSet: set}
+}
+
+// channelOut is a channel as sent to the browser. The webhook URL is a
+// secret (anyone holding it can post to the channel), so only a hint is shown.
+type channelOut struct {
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	WebhookSet  bool   `json:"webhook_set"`
+	WebhookHint string `json:"webhook_hint"`
+	CreatedAt   int64  `json:"created_at"`
+}
+
+func channelHint(url string) string {
+	if url == "" {
+		return ""
+	}
+	if i := strings.Index(url, "/webhooks/"); i >= 0 {
+		rest := url[i+len("/webhooks/"):]
+		id, _, _ := strings.Cut(rest, "/")
+		host := url[:i]
+		host = strings.TrimPrefix(strings.TrimPrefix(host, "https://"), "http://")
+		return host + "/webhooks/" + id + "/••••••••"
+	}
+	if len(url) > 24 {
+		return url[:24] + "••••••••"
+	}
+	return "••••••••"
+}
+
+func toChannelOut(c Channel) channelOut {
+	return channelOut{ID: c.ID, Name: c.Name, WebhookSet: c.WebhookURL != "", WebhookHint: channelHint(c.WebhookURL), CreatedAt: c.CreatedAt}
 }
 
 // senderNotice warns when another *arr app has posted to this integration's
@@ -146,7 +216,7 @@ func (a *App) handleIntegrationList(w http.ResponseWriter, r *http.Request) {
 	out := make([]integrationOut, 0, len(list))
 	a.pollMu.Lock()
 	for _, in := range list {
-		o := integrationOut{Integration: in, LastEvent: last[in.ID], Notice: a.senderNotice(in)}
+		o := integrationOut{redactedIntegration: redactSecrets(in), LastEvent: last[in.ID], Notice: a.senderNotice(in)}
 		if st := a.polls[in.ID]; st != nil && !st.lastRun.IsZero() {
 			o.Status = &integrationStatus{LastRun: st.lastRun.Unix(), LastError: st.lastErr}
 		}
@@ -157,7 +227,11 @@ func (a *App) handleIntegrationList(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleIntegrationSave(w http.ResponseWriter, r *http.Request) {
-	var body Integration
+	var body struct {
+		Integration
+		// ClearSecrets lists secret settings to erase. A secret left blank is kept.
+		ClearSecrets []string `json:"clear_secrets"`
+	}
 	if !readJSON(w, r, &body) {
 		return
 	}
@@ -190,14 +264,25 @@ func (a *App) handleIntegrationSave(w http.ResponseWriter, r *http.Request) {
 	in.Name = body.Name
 	in.Enabled = body.Enabled
 	in.ChannelID = body.ChannelID
-	// Keep only fields the type defines, filling in defaults.
+	// Keep only fields the type defines, filling in defaults. Secrets are
+	// write-only: the browser never receives them, so a blank secret means
+	// "unchanged" unless it is listed in clear_secrets.
+	old := in.Config
 	in.Config = map[string]string{}
 	for _, f := range def.Fields {
 		v, ok := body.Config[f.Key]
-		if !ok {
+		v = strings.TrimSpace(v)
+		if f.Kind == "password" {
+			switch {
+			case slices.Contains(body.ClearSecrets, f.Key):
+				v = ""
+			case v == "":
+				v = old[f.Key]
+			}
+		} else if !ok {
 			v = f.Default
 		}
-		in.Config[f.Key] = strings.TrimSpace(v)
+		in.Config[f.Key] = v
 	}
 	in.Events = map[string]EventRule{}
 	for _, e := range def.Events {
@@ -222,7 +307,7 @@ func (a *App) handleIntegrationSave(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, in)
+	writeJSON(w, http.StatusOK, redactSecrets(in))
 }
 
 func (a *App) handleIntegrationDelete(w http.ResponseWriter, r *http.Request) {
@@ -248,7 +333,7 @@ func (a *App) handleIntegrationToken(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, in)
+	writeJSON(w, http.StatusOK, redactSecrets(in))
 }
 
 // handleIntegrationTest sends a test embed and, for polling integrations,

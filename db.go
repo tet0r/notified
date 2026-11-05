@@ -127,6 +127,7 @@ func (a *App) listChannels() ([]Channel, error) {
 		if err := rows.Scan(&c.ID, &c.Name, &c.WebhookURL, &c.CreatedAt); err != nil {
 			return nil, err
 		}
+		c.WebhookURL = openSecret(c.WebhookURL)
 		out = append(out, c)
 	}
 	return out, rows.Err()
@@ -139,6 +140,7 @@ func (a *App) getChannel(id int64) (*Channel, error) {
 	if err != nil {
 		return nil, err
 	}
+	c.WebhookURL = openSecret(c.WebhookURL)
 	return &c, nil
 }
 
@@ -205,6 +207,9 @@ func scanIntegration(r rowScanner) (*Integration, error) {
 	if in.Config == nil {
 		in.Config = map[string]string{}
 	}
+	for k, v := range in.Config {
+		in.Config[k] = openSecret(v)
+	}
 	if in.Events == nil {
 		in.Events = map[string]EventRule{}
 	}
@@ -237,7 +242,7 @@ func (a *App) integrationByToken(token string) (*Integration, error) {
 }
 
 func (a *App) insertIntegration(in *Integration) error {
-	cfg, _ := json.Marshal(in.Config)
+	cfg, _ := json.Marshal(sealConfig(in.Type, in.Config))
 	ev, _ := json.Marshal(in.Events)
 	in.CreatedAt = time.Now().Unix()
 	res, err := a.db.Exec(`INSERT INTO integrations(type,name,enabled,token,channel_id,config,events,created_at) VALUES(?,?,?,?,?,?,?,?)`,
@@ -250,7 +255,7 @@ func (a *App) insertIntegration(in *Integration) error {
 }
 
 func (a *App) updateIntegration(in *Integration) error {
-	cfg, _ := json.Marshal(in.Config)
+	cfg, _ := json.Marshal(sealConfig(in.Type, in.Config))
 	ev, _ := json.Marshal(in.Events)
 	_, err := a.db.Exec(`UPDATE integrations SET name=?,enabled=?,token=?,channel_id=?,config=?,events=? WHERE id=?`,
 		in.Name, in.Enabled, in.Token, in.ChannelID, string(cfg), string(ev), in.ID)

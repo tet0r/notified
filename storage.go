@@ -2,6 +2,9 @@ package main
 
 import (
 	"bufio"
+	"context"
+	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -78,6 +81,13 @@ func (a *App) handleBackup(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusInternalServerError, "could not create the backup: "+err.Error())
 		return
 	}
+	// A backup must restore anywhere, including a fresh install with a
+	// different key, so its secrets are written out decrypted. The file is as
+	// sensitive as a password list and is only offered to the signed-in admin.
+	if err := decryptBackup(r.Context(), tmp); err != nil {
+		httpError(w, http.StatusInternalServerError, "could not prepare the backup: "+err.Error())
+		return
+	}
 	f, err := os.Open(tmp)
 	if err != nil {
 		httpError(w, http.StatusInternalServerError, "could not read the backup")
@@ -90,4 +100,60 @@ func (a *App) handleBackup(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	io.Copy(w, f)
+}
+
+// decryptBackup replaces encrypted secrets in a backup copy with their values.
+func decryptBackup(ctx context.Context, path string) error {
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	type row struct {
+		id  int64
+		val string
+	}
+	read := func(q string) ([]row, error) {
+		rows, err := db.QueryContext(ctx, q)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		var out []row
+		for rows.Next() {
+			var r row
+			if err := rows.Scan(&r.id, &r.val); err != nil {
+				return nil, err
+			}
+			out = append(out, r)
+		}
+		return out, rows.Err()
+	}
+	cfgs, err := read(`SELECT id, config FROM integrations`)
+	if err != nil {
+		return err
+	}
+	for _, r := range cfgs {
+		var cfg map[string]string
+		if json.Unmarshal([]byte(r.val), &cfg) != nil {
+			continue
+		}
+		for k, v := range cfg {
+			cfg[k] = openSecret(v)
+		}
+		data, _ := json.Marshal(cfg)
+		if _, err := db.ExecContext(ctx, `UPDATE integrations SET config=? WHERE id=?`, string(data), r.id); err != nil {
+			return err
+		}
+	}
+	chans, err := read(`SELECT id, webhook_url FROM channels`)
+	if err != nil {
+		return err
+	}
+	for _, r := range chans {
+		if _, err := db.ExecContext(ctx, `UPDATE channels SET webhook_url=? WHERE id=?`, openSecret(r.val), r.id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
