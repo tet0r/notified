@@ -63,6 +63,9 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("POST /api/container-updates/check", a.auth(a.handleContainerUpdatesCheck))
 	mux.HandleFunc("POST /api/container-updates/apply", a.auth(a.handleContainerUpdateApply))
 	mux.HandleFunc("POST /api/overview/send", a.auth(a.handleOverviewSend))
+	mux.HandleFunc("GET /api/bot", a.auth(a.handleBotGet))
+	mux.HandleFunc("PUT /api/bot", a.auth(a.handleBotSave))
+	mux.HandleFunc("POST /api/bot/test", a.auth(a.handleBotTest))
 	mux.HandleFunc("GET /api/update", a.auth(a.handleUpdateGet))
 	mux.HandleFunc("POST /api/update/check", a.auth(a.handleUpdateCheck))
 

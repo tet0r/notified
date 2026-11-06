@@ -30,6 +30,8 @@ type App struct {
 	// iconCache remembers which container icon names exist on the CDN.
 	iconCache sync.Map
 
+	bot *discordBot
+
 	// applyMu serialises container updates so two clicks never overlap.
 	applyMu sync.Mutex
 
@@ -74,6 +76,8 @@ func main() {
 	if err := app.initSecrets(dataDir); err != nil {
 		log.Fatalf("secret key: %v", err)
 	}
+	app.bot = newDiscordBot(app)
+	go app.bot.restart()
 	if os.Getenv("NOTIFIED_RESET_ADMIN") == "1" {
 		app.resetAdmin()
 		log.Print("admin account cleared; open the web UI to create a new one, then remove NOTIFIED_RESET_ADMIN")
@@ -99,6 +103,7 @@ func main() {
 	}
 	go func() {
 		<-ctx.Done()
+		app.bot.close()
 		sctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		srv.Shutdown(sctx)

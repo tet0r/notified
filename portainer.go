@@ -311,19 +311,27 @@ func (a *App) handleContainerUpdatesCheck(w http.ResponseWriter, r *http.Request
 // handleContainerUpdateApply recreates one container with a fresh image pull.
 // Only containers on the stored pending list can be updated, so the rules in
 // pollPortainer (not Notified itself, not limited stacks) also bound this.
-func (a *App) handleContainerUpdateApply(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		IntegrationID int64  `json:"integration_id"`
-		EnvID         int64  `json:"env_id"`
-		ContainerID   string `json:"container_id"`
+var errNotPending = errors.New("that container is not on the pending update list; run the check again")
+
+// findPending looks up a container on an integration's pending update list.
+func (a *App) findPending(integrationID, envID int64, containerID string) (pendingUpdate, bool) {
+	for _, it := range a.portainerReport(integrationID).Items {
+		if it.EnvID == envID && it.ContainerID == containerID {
+			return it, true
+		}
 	}
-	if !readJSON(w, r, &body) {
-		return
-	}
-	in, err := a.getIntegration(body.IntegrationID)
+	return pendingUpdate{}, false
+}
+
+// applyUpdate recreates one pending container with a fresh image pull. It is
+// shared by the web page and the Discord bot. Only containers on the stored
+// pending list can be updated, so the rules in the scan (not Notified itself,
+// not Limited stacks, not the socket proxy) also bound this. actor names who
+// asked, for the notification; it may be empty.
+func (a *App) applyUpdate(integrationID, envID int64, containerID, actor string) (pendingUpdate, error) {
+	in, err := a.getIntegration(integrationID)
 	if err != nil || !isUpdateType(in.Type) || !in.Enabled {
-		httpError(w, http.StatusNotFound, "integration not found")
-		return
+		return pendingUpdate{}, errors.New("integration not found")
 	}
 
 	a.applyMu.Lock()
@@ -332,18 +340,17 @@ func (a *App) handleContainerUpdateApply(w http.ResponseWriter, r *http.Request)
 	report := a.portainerReport(in.ID)
 	idx := -1
 	for i, it := range report.Items {
-		if it.EnvID == body.EnvID && it.ContainerID == body.ContainerID {
+		if it.EnvID == envID && it.ContainerID == containerID {
 			idx = i
 		}
 	}
 	if idx < 0 {
-		httpError(w, http.StatusNotFound, "that container is not on the pending update list; run the check again")
-		return
+		return pendingUpdate{}, errNotPending
 	}
 	item := report.Items[idx]
 
-	// Deliberately not tied to the browser request: closing the tab must not
-	// abort the swap halfway.
+	// Deliberately not tied to the request that asked for it: closing the
+	// page must not abort the swap halfway.
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
 	note := ""
@@ -365,20 +372,41 @@ func (a *App) handleContainerUpdateApply(w http.ResponseWriter, r *http.Request)
 	e.Thumb(a.containerIcon(ctx, item.Image, item.Name))
 	if err != nil {
 		e.Title, e.Color = "Container update failed", colorRed
+		e.Add("Requested by", actor, true)
 		e.Add("Error", trunc(err.Error(), 600), false)
 		e.Add("What to check", "Look at the container on its host. If the update stopped partway it may be stopped or renamed with an \"-old\" suffix.", false)
 		a.Dispatch(in, "update_failed", e, nil)
-		httpError(w, http.StatusBadGateway, err.Error())
-		return
+		return item, err
 	}
 	e.Title, e.Color = "Container updated", colorGreen
 	if item.EnvName != in.Name {
 		e.Add("Environment", item.EnvName, true)
 	}
+	e.Add("Requested by", actor, true)
 	e.Add("Note", note, false)
 	a.Dispatch(in, "updated", e, nil)
 
 	report.Items = append(report.Items[:idx], report.Items[idx+1:]...)
 	a.savePortainerReport(in.ID, report)
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	return item, nil
+}
+
+func (a *App) handleContainerUpdateApply(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		IntegrationID int64  `json:"integration_id"`
+		EnvID         int64  `json:"env_id"`
+		ContainerID   string `json:"container_id"`
+	}
+	if !readJSON(w, r, &body) {
+		return
+	}
+	_, err := a.applyUpdate(body.IntegrationID, body.EnvID, body.ContainerID, "web UI")
+	switch {
+	case errors.Is(err, errNotPending), err != nil && err.Error() == "integration not found":
+		httpError(w, http.StatusNotFound, err.Error())
+	case err != nil:
+		httpError(w, http.StatusBadGateway, err.Error())
+	default:
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
 }

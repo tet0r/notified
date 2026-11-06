@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"strconv"
@@ -64,6 +65,8 @@ type Embed struct {
 	// artwork on servers Discord cannot reach; fallbackThumb is used if that fails.
 	fetchThumb    string
 	fallbackThumb string
+	// actions are buttons, only possible when the Discord bot is connected.
+	actions []botAction
 }
 
 // Add appends a field, skipping empty values.
@@ -207,6 +210,13 @@ func (a *App) sender(ctx context.Context) {
 
 // postDiscord sends one embed, retrying on rate limits and server errors.
 func (a *App) postDiscord(ctx context.Context, webhookURL string, e Embed) error {
+	if len(e.actions) > 0 && len(e.attach) == 0 && e.fetchThumb == "" && a.bot != nil && a.bot.session() != nil {
+		if err := a.bot.sendWithButtons(ctx, webhookURL, e); err == nil {
+			return nil
+		} else {
+			log.Printf("discord bot: sending without buttons: %v", err)
+		}
+	}
 	if e.fetchThumb != "" && len(e.attach) == 0 {
 		if data, name, err := a.fetchImage(ctx, e.fetchThumb); err == nil {
 			e.attach, e.attachName = data, name

@@ -832,6 +832,7 @@ async function settingsPage() {
           }),
         }, 'Change password')),
       overviewCard(),
+      botCard(),
       updatesCard(),
       backupCard(),
       appearanceCard()));
@@ -870,6 +871,46 @@ function backupCard() {
     h('div', { class: 'help' }, 'Replaces everything with the contents of a backup file. You stay signed in; the next sign-in uses the password stored in the backup.'),
     h('div', {}, ' '),
     h('div', { class: 'copybox' }, file, restore));
+}
+
+function botCard() {
+  const card = h('div', { class: 'card' }, h('h2', {}, 'Discord bot'), h('div', { class: 'dim' }, 'Loading…'));
+  const draw = (st) => {
+    const token = h('input', { type: 'password', value: '', autocomplete: 'new-password', placeholder: st.token_set ? 'Saved. Paste a new token to replace it.' : 'Bot token' });
+    const users = h('input', { type: 'text', value: st.allowed_users || '', placeholder: 'e.g. 123456789012345678' });
+    let clear = false;
+    const status = st.connected
+      ? h('span', { class: 'badge ok' }, 'connected as ' + st.user)
+      : st.token_set ? h('span', { class: 'badge err' }, st.error ? 'not connected' : 'connecting…') : h('span', { class: 'badge' }, 'off');
+    const save = (extra) => api('PUT', '/bot', { token: token.value, allowed_users: users.value, clear_token: clear, ...extra });
+    // replaceChildren would print a null as the text "null", so drop empty entries.
+    card.replaceChildren(...[
+      h('h2', {}, 'Discord bot'),
+      h('div', { class: 'help' }, 'Optional. With a bot, container update notices get Update and Ignore buttons. Every click asks for confirmation, and only the Discord users listed below can use them. Notified connects out to Discord, so nothing needs to be opened on your network.'),
+      h('div', {}, ' '),
+      h('dl', { class: 'kv' }, h('dt', {}, 'Status'), h('dd', {}, status)),
+      st.error ? h('div', { class: 'error' }, st.error) : null,
+      field('Bot token', h('div', { class: 'copybox' }, token, st.token_set ? h('button', {
+        class: 'btn small', type: 'button', onclick: (e) => {
+          if (!confirm('Remove the bot token? The bot will disconnect.')) return;
+          clear = true; token.value = ''; token.placeholder = 'Will be removed when you save.'; e.target.disabled = true;
+        },
+      }, 'Clear') : null), 'Discord Developer Portal → New Application → Bot → Reset Token. Stored encrypted.'),
+      field('Discord users allowed to press buttons', users, 'Comma-separated user IDs. Not sure of yours? Save, send the test message, and press its button: it tells you.'),
+      st.invite_url ? h('div', { class: 'setup' }, 'Invite the bot to your server (it needs to see and post in your notification channels): ',
+        h('a', { href: st.invite_url, target: '_blank', rel: 'noopener noreferrer' }, 'open the invite link')) : null,
+      h('div', { class: 'row' },
+        h('button', { class: 'btn primary', onclick: (e) => busy(e.target, async () => { draw(await save()); toast('Bot settings saved'); }) }, 'Save'),
+        st.token_set ? h('button', {
+          class: 'btn', onclick: (e) => busy(e.target, async () => {
+            const r = await api('POST', '/bot/test');
+            toast('Test message sent to ' + r.channel + '. Press its button in Discord.');
+          }),
+        }, 'Send test message') : null),
+    ].filter(Boolean));
+  };
+  api('GET', '/bot').then(draw).catch(fail);
+  return card;
 }
 
 function overviewCard() {

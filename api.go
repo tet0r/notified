@@ -443,21 +443,30 @@ func (a *App) handleIntegrationIgnore(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusBadRequest, "invalid container name")
 		return
 	}
+	if err := a.setIgnored(in, name, body.Ignore); err != nil {
+		httpError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, a.containerLists(in))
+}
+
+// setIgnored adds a container name to an integration's ignore list, or
+// removes it, and saves straight away. Shared by the web page and the bot.
+func (a *App) setIgnored(in *Integration, name string, ignore bool) error {
 	var list []string
 	for _, n := range splitList(in.Config["ignore"]) {
 		if n != name {
 			list = append(list, n)
 		}
 	}
-	if body.Ignore {
+	if ignore {
 		list = append(list, name)
 	}
 	in.Config["ignore"] = strings.Join(list, ", ")
 	if err := a.updateIntegration(in); err != nil {
-		httpError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	if body.Ignore && isUpdateType(in.Type) {
+	if ignore && isUpdateType(in.Type) {
 		// Take it off the pending list now rather than at the next check.
 		report := a.portainerReport(in.ID)
 		kept := report.Items[:0]
@@ -469,7 +478,7 @@ func (a *App) handleIntegrationIgnore(w http.ResponseWriter, r *http.Request) {
 		report.Items = kept
 		a.savePortainerReport(in.ID, report)
 	}
-	writeJSON(w, http.StatusOK, a.containerLists(in))
+	return nil
 }
 
 // ---- notification history ----

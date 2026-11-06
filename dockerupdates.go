@@ -183,6 +183,7 @@ func (a *App) finishScan(ctx context.Context, in *Integration, report portainerR
 			}
 			e.Add("Stack", it.Stack, true)
 			e.Thumb(a.containerIcon(ctx, it.Image, it.Name))
+			e.actions = updateActions(in.ID, it)
 			a.Dispatch(in, "update_available", e, nil)
 		}
 	default:

@@ -76,6 +76,15 @@ under **Container updates**, where one click pulls the image and recreates the c
 
 Notified never updates itself, the socket proxy, or containers Portainer shows as *Limited*.
 
+## Discord bot (optional)
+
+With a bot, container update notices get **Update** and **Ignore** buttons. Create an application in
+the [Discord Developer Portal](https://discord.com/developers/applications), add a bot, and paste
+its token in **Settings → Discord bot**. Then use the invite link shown there, list the Discord user
+IDs allowed to press buttons (the test message tells you yours), and send a test message. Every click
+asks for confirmation, only listed users can act, and Notified connects out to Discord, so nothing
+needs to be opened on your network.
+
 ## Settings by environment variable
 
 | Variable | Default | Purpose |
