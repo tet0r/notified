@@ -301,10 +301,26 @@ func (a *App) initSecrets(dataDir string) error {
 	}
 	if n > 0 {
 		log.Printf("encrypted the stored secrets of %d integrations and channels (key from %s)", n, source)
+		// The plain-text versions can survive in the WAL and in free pages of
+		// the database file; rewrite both so only the encrypted copies remain.
+		if err := a.purgeFreeSpace(); err != nil {
+			log.Printf("WARNING: could not compact the database after encrypting secrets: %v", err)
+		}
 	}
 	if bad := unreadableSecrets.Load(); bad > 0 {
 		a.secretWarn = fmt.Sprintf("%d saved secrets (API keys, passwords or webhook URLs) could not be decrypted with the current key, so they show as not set. If NOTIFIED_SECRET_KEY was changed or the %s file was lost, put the old one back, or re-enter those values.", bad, secretKeyFile)
 		log.Printf("WARNING: %s", a.secretWarn)
+	}
+	return nil
+}
+
+// purgeFreeSpace checkpoints the WAL into the database and rebuilds the file,
+// dropping any old (for example plain-text) content left in free pages.
+func (a *App) purgeFreeSpace() error {
+	for _, stmt := range []string{`PRAGMA wal_checkpoint(TRUNCATE)`, `VACUUM`, `PRAGMA wal_checkpoint(TRUNCATE)`} {
+		if _, err := a.db.Exec(stmt); err != nil {
+			return err
+		}
 	}
 	return nil
 }

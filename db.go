@@ -65,6 +65,8 @@ func openDB(path string) (*sql.DB, error) {
 	q.Add("_pragma", "journal_mode(WAL)")
 	q.Add("_pragma", "busy_timeout(10000)")
 	q.Add("_pragma", "synchronous(NORMAL)")
+	// Overwrite deleted content, so replaced secrets don't linger in free space.
+	q.Add("_pragma", "secure_delete(ON)")
 	db, err := sql.Open("sqlite", "file:"+path+"?"+q.Encode())
 	if err != nil {
 		return nil, err

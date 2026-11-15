@@ -133,3 +133,25 @@ func TestKeyFileIsCreatedOnceAndReused(t *testing.T) {
 		t.Errorf("environment key should take over and keep the file key readable")
 	}
 }
+
+func TestPlainTextIsPurgedAfterEncryption(t *testing.T) {
+	a := newTestApp(t)
+	a.db.Exec(`INSERT INTO integrations(type,name,enabled,token,channel_id,config,events,created_at)
+		VALUES('sabnzbd','SAB',1,'t',0,'{"url":"http://sab","apikey":"PLAINTEXTMARKER123","interval":"300"}','{}',1)`)
+	withBox(t, key('p'))
+	if n, err := a.encryptExisting(); err != nil || n != 1 {
+		t.Fatalf("encryptExisting = %d, %v", n, err)
+	}
+	if err := a.purgeFreeSpace(); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"notified.db", "notified.db-wal"} {
+		data, err := os.ReadFile(filepath.Join(a.dataDir, f))
+		if err != nil {
+			continue // the WAL may be empty or absent after a checkpoint
+		}
+		if strings.Contains(string(data), "PLAINTEXTMARKER123") {
+			t.Errorf("the old plain-text API key is still readable in %s", f)
+		}
+	}
+}

@@ -439,7 +439,7 @@ func (a *App) handleIntegrationIgnore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := strings.TrimSpace(body.Name)
-	if name == "" || len(name) > 255 || strings.ContainsAny(name, ",\r\n") {
+	if !validIgnoreName(name) {
 		httpError(w, http.StatusBadRequest, "invalid container name")
 		return
 	}
@@ -448,6 +448,11 @@ func (a *App) handleIntegrationIgnore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, a.containerLists(in))
+}
+
+// validIgnoreName rejects names that would corrupt the comma-separated ignore list.
+func validIgnoreName(name string) bool {
+	return name != "" && len(name) <= 255 && !strings.ContainsAny(name, ",\r\n")
 }
 
 // setIgnored adds a container name to an integration's ignore list, or

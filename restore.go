@@ -23,7 +23,7 @@ const maxBackupSize = 512 << 20
 // validateBackup opens an uploaded file read-only and checks it is a healthy
 // Notified database with an admin account.
 func validateBackup(ctx context.Context, path string) error {
-	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro")
+	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro&_pragma=trusted_schema(OFF)")
 	if err != nil {
 		return errors.New("the file could not be opened as a database")
 	}
@@ -82,6 +82,11 @@ func (a *App) restoreFrom(ctx context.Context, path string) error {
 		return err
 	}
 	defer conn.Close()
+	// The upload is untrusted: don't let anything in its schema (views,
+	// triggers, defaults) run functions while it is read.
+	if _, err := conn.ExecContext(ctx, `PRAGMA trusted_schema=OFF`); err != nil {
+		return err
+	}
 	if _, err := conn.ExecContext(ctx, `ATTACH DATABASE ? AS src`, path); err != nil {
 		return fmt.Errorf("could not open the backup: %w", err)
 	}

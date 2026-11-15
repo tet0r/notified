@@ -404,6 +404,9 @@ func (b *discordBot) confirmed(s *discordgo.Session, ic *discordgo.InteractionCr
 
 	if c.kind == "i" {
 		in, err := b.a.getIntegration(intID)
+		if err == nil && !validIgnoreName(c.parts[2]) {
+			err = errors.New("that container name can't be added to the ignore list")
+		}
 		if err == nil {
 			err = b.a.setIgnored(in, c.parts[2], true)
 		}

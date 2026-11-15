@@ -188,14 +188,19 @@ type credentials struct {
 }
 
 func (a *App) handleStatus(w http.ResponseWriter, r *http.Request) {
+	authed := a.authenticated(r)
+	secretWarn := ""
+	if authed {
+		secretWarn = a.secretWarn
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"setup_required": a.setupRequired(),
-		"authenticated":  a.authenticated(r),
+		"authenticated":  authed,
 		"version":        version,
 		"instance_name":  a.setting("instance_name"),
 		// Shown before login too: the moment it matters most is an unexpected setup screen.
 		"storage_warning": a.storageWarn,
-		"secret_warning":  a.secretWarn,
+		"secret_warning":  secretWarn,
 	})
 }
 

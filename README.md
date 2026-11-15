@@ -90,7 +90,7 @@ needs to be opened on your network.
 | Variable | Default | Purpose |
 |---|---|---|
 | `TZ` | UTC | Timezone for the dashboard and the daily overview |
-| `NOTIFIED_SECRET_KEY` | unset | Your own key for encrypting stored secrets |
+| `NOTIFIED_SECRET_KEY` | unset | Your own key for encrypting stored secrets. Use a long random value, for example from `openssl rand -base64 32` |
 | `NOTIFIED_PORT` | `8080` | Listen port |
 | `NOTIFIED_DATA_DIR` | `/data` | Where the database lives |
 | `NOTIFIED_RESET_ADMIN` | unset | Set to `1` for one start to clear the admin login |
