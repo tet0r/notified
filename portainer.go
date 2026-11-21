@@ -134,6 +134,11 @@ type pendingUpdate struct {
 	Image       string `json:"image"`
 	Stack       string `json:"stack,omitempty"`
 	Latest      string `json:"latest"` // registry digest
+	// Where to read about the update, when Notified can tell.
+	InstalledVersion string `json:"installed_version,omitempty"`
+	LatestVersion    string `json:"latest_version,omitempty"`
+	ReleasedAt       int64  `json:"released_at,omitempty"`
+	NotesURL         string `json:"notes_url,omitempty"`
 }
 
 type portainerReport struct {
@@ -143,7 +148,9 @@ type portainerReport struct {
 	Limited   int             `json:"limited"` // skipped: stack not managed by Portainer
 	Ignored   int             `json:"ignored"` // skipped: ignore list, Notified itself, pinned or local images
 	Names     []string        `json:"names"`   // containers the user could choose to ignore
-	Errors    []string        `json:"errors"`
+	// labels holds image labels for this scan's pending items; not stored.
+	labels map[string]map[string]string
+	Errors []string `json:"errors"`
 }
 
 func (a *App) portainerReport(id int64) portainerReport {

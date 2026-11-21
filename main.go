@@ -29,6 +29,8 @@ type App struct {
 
 	// iconCache remembers which container icon names exist on the CDN.
 	iconCache sync.Map
+	// releaseCache remembers GitHub release lookups for container updates.
+	releaseCache sync.Map
 
 	bot *discordBot
 

@@ -56,7 +56,9 @@ To update: `docker compose pull && docker compose up -d`, or "pull and redeploy"
 ## Container updates
 
 Notified compares running containers with their registry and lists newer builds of the same tag
-under **Container updates**, where one click pulls the image and recreates the container.
+under **Container updates**, where one click pulls the image and recreates the container. Each
+update links to the project's release notes when the image says where it comes from (GitHub
+projects show the latest release and its date), or to its Docker Hub tags otherwise.
 
 - **Portainer**: add the integration with your Portainer URL and an admin access token.
 - **Without Portainer** (for example OpenMediaVault): run a socket proxy on that host and add a

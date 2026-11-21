@@ -724,8 +724,13 @@ async function containerUpdatesPage() {
         const btn = h('button', { class: 'btn small primary' }, 'Update');
         const ignoreBtn = h('button', { class: 'btn small', title: 'Stop checking this container' }, 'Ignore');
         const row = h('tr', {},
-          h('td', {}, h('b', {}, it.name), it.stack ? h('div', { class: 'dim' }, 'stack: ' + it.stack) : null),
+          h('td', {}, h('b', {}, it.name), it.stack ? h('div', { class: 'dim' }, 'stack: ' + it.stack) : null,
+            it.installed_version ? h('div', { class: 'dim' }, 'installed: ' + it.installed_version) : null),
           h('td', { class: 'mono' }, it.image),
+          h('td', {}, it.notes_url
+            ? [h('a', { href: it.notes_url, target: '_blank', rel: 'noopener noreferrer' }, it.latest_version ? it.latest_version : 'Release notes'),
+              it.released_at ? h('div', { class: 'dim' }, 'released ' + ago(it.released_at)) : null]
+            : h('span', { class: 'dim' }, '—')),
           h('td', { class: 'dim' }, it.env_name === g.integration_name ? '' : it.env_name),
           h('td', { class: 'nowrap' }, h('div', { class: 'row end' }, ignoreBtn, btn)));
         ignoreBtn.addEventListener('click', async () => {
@@ -755,7 +760,7 @@ async function containerUpdatesPage() {
         h('h3', {}, g.integration_name),
         h('div', { class: 'card table-wrap' },
           rows.length
-            ? h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Container'), h('th', {}, 'Image'), h('th', {}, g.items.some((it) => it.env_name !== g.integration_name) ? 'Environment' : ''), h('th', {}))), h('tbody', {}, rows))
+            ? h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Container'), h('th', {}, 'Image'), h('th', {}, "What's new"), h('th', {}, g.items.some((it) => it.env_name !== g.integration_name) ? 'Environment' : ''), h('th', {}))), h('tbody', {}, rows))
             : h('div', { class: 'empty' }, g.checked_at ? 'Everything checked is up to date.' : 'Not checked yet. Press "Check now".')),
         h('div', { class: 'help' }, g.checked_at
           ? 'Checked ' + ago(g.checked_at) + ': ' + g.checked + ' containers compared with their registry' + (skipped.length ? '; skipped ' + skipped.join(', ') : '') + '.'

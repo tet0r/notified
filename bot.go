@@ -352,6 +352,9 @@ func (b *discordBot) askConfirm(s *discordgo.Session, ic *discordgo.InteractionC
 			return
 		}
 		question = fmt.Sprintf("Update **%s** now? Notified will pull `%s` and recreate the container with the same settings. It will be briefly unavailable.", item.Name, item.Image)
+		if line := releaseNotesLine(item); line != "" {
+			question += "\n\nRead first: " + line
+		}
 	case "i":
 		if len(parts) != 3 {
 			return

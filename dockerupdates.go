@@ -70,8 +70,9 @@ func scanContainers(ctx context.Context, call dockerCall, o scanOpts, report *po
 		addErr("%s: could not list containers: %v", o.envName, err)
 		return
 	}
-	localDigests := map[string]map[string]bool{} // image id -> digests
-	remoteDigest := map[string]string{}          // image ref -> digest ("" = lookup failed)
+	localDigests := map[string]map[string]bool{}  // image id -> digests
+	imageLabels := map[string]map[string]string{} // image id -> labels
+	remoteDigest := map[string]string{}           // image ref -> digest ("" = lookup failed)
 	for _, c := range containers {
 		if len(c.Names) == 0 {
 			continue
@@ -101,6 +102,9 @@ func scanContainers(ctx context.Context, call dockerCall, o scanOpts, report *po
 		if !seen {
 			var img struct {
 				RepoDigests []string `json:"RepoDigests"`
+				Config      struct {
+					Labels map[string]string `json:"Labels"`
+				} `json:"Config"`
 			}
 			local = map[string]bool{}
 			if err := call(ctx, http.MethodGet, "/images/"+c.ImageID+"/json", nil, &img); err != nil {
@@ -110,6 +114,7 @@ func scanContainers(ctx context.Context, call dockerCall, o scanOpts, report *po
 				local[digestOf(d)] = true
 			}
 			localDigests[c.ImageID] = local
+			imageLabels[c.ImageID] = img.Config.Labels
 		}
 		if len(local) == 0 {
 			report.Ignored++ // built locally or never pulled from a registry
@@ -141,12 +146,27 @@ func scanContainers(ctx context.Context, call dockerCall, o scanOpts, report *po
 				EnvID: o.envID, EnvName: o.envName, ContainerID: c.ID, Name: name,
 				Image: c.Image, Stack: project, Latest: remote,
 			})
+			// Container labels include the image's, so either source works.
+			l := map[string]string{}
+			for k, v := range imageLabels[c.ImageID] {
+				l[k] = v
+			}
+			for _, k := range []string{"org.opencontainers.image.source", "org.opencontainers.image.version"} {
+				if v := c.Labels[k]; v != "" && l[k] == "" {
+					l[k] = v
+				}
+			}
+			if report.labels == nil {
+				report.labels = map[string]map[string]string{}
+			}
+			report.labels[c.ID] = l
 		}
 	}
 }
 
 // finishScan stores the report and announces each new image build once.
 func (a *App) finishScan(ctx context.Context, in *Integration, report portainerReport) {
+	a.addReleaseNotes(ctx, report.Items, report.labels)
 	sort.Slice(report.Items, func(i, j int) bool {
 		if report.Items[i].EnvName != report.Items[j].EnvName {
 			return report.Items[i].EnvName < report.Items[j].EnvName
@@ -182,6 +202,8 @@ func (a *App) finishScan(ctx context.Context, in *Integration, report portainerR
 				e.Add("Environment", it.EnvName, true)
 			}
 			e.Add("Stack", it.Stack, true)
+			e.Add("Installed", it.InstalledVersion, true)
+			e.Add("What's new", releaseNotesLine(it), false)
 			e.Thumb(a.containerIcon(ctx, it.Image, it.Name))
 			e.actions = updateActions(in.ID, it)
 			a.Dispatch(in, "update_available", e, nil)
@@ -197,4 +219,20 @@ func (a *App) finishScan(ctx context.Context, in *Integration, report portainerR
 		e.Description = joinLimited(lines, 20)
 		a.Dispatch(in, "update_available", e, nil)
 	}
+}
+
+// releaseNotesLine is the Discord text linking to an update's release notes.
+func releaseNotesLine(it pendingUpdate) string {
+	if it.NotesURL == "" {
+		return ""
+	}
+	label := "Release notes"
+	if it.LatestVersion != "" {
+		label = "Latest release " + strings.NewReplacer("[", "(", "]", ")").Replace(it.LatestVersion)
+	}
+	line := "[" + label + "](" + it.NotesURL + ")"
+	if it.ReleasedAt > 0 {
+		line += fmt.Sprintf(" · <t:%d:R>", it.ReleasedAt) // Discord shows this as "3 days ago"
+	}
+	return line
 }
