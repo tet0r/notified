@@ -50,7 +50,7 @@ func TestScanRunsInParallelAndKeepsOrder(t *testing.T) {
 		if i%3 == 0 {
 			img = fmt.Sprintf("ghcr.io/org/new%d:latest", i) // these have an update
 		}
-		cs = append(cs, portainerContainer{ID: fmt.Sprintf("c%02d", i), Names: []string{fmt.Sprintf("/svc%02d", i)}, Image: img, ImageID: fmt.Sprintf("sha256:i%d", i)})
+		cs = append(cs, portainerContainer{ID: fmt.Sprintf("c%02d", i), Names: []string{fmt.Sprintf("/svc%02d", i)}, Image: img, ImageID: fmt.Sprintf("sha256:%064x", i)})
 	}
 	var inflight, peak atomic.Int32
 	call := fakeCall(cs, 100*time.Millisecond, &inflight, &peak)

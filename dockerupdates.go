@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"path"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -45,6 +46,10 @@ func registryOf(image string) string {
 	}
 	return "docker.io"
 }
+
+// imageIDRE matches the image IDs Docker reports; anything else is not put
+// into a request path.
+var imageIDRE = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 
 // pacer spaces out requests per key (here, per registry).
 type pacer struct {
@@ -149,7 +154,7 @@ func scanContainers(ctx context.Context, call dockerCall, o scanOpts, report *po
 		if !untouchable {
 			report.Names = append(report.Names, name)
 		}
-		skip := untouchable || strings.Contains(c.Image, "@") || strings.HasPrefix(c.Image, "sha256:") || !imageRefRE.MatchString(c.Image) || strings.Contains(c.Image, "..")
+		skip := untouchable || !imageIDRE.MatchString(c.ImageID) || strings.Contains(c.Image, "@") || strings.HasPrefix(c.Image, "sha256:") || !imageRefRE.MatchString(c.Image) || strings.Contains(c.Image, "..")
 		for _, pat := range o.ignore {
 			if ok, _ := path.Match(pat, name); ok {
 				skip = true

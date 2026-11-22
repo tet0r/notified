@@ -127,7 +127,7 @@ func (a *App) latestRelease(ctx context.Context, repo string) (releaseInfo, bool
 		// Built here rather than taken from the response, so it can only ever
 		// point at this repository's release page.
 		NotesURL: "https://github.com/" + repo + "/releases",
-		Version:  trunc(firstNonEmpty(tag, rel.Name), 60),
+		Version:  cleanVersion(firstNonEmpty(tag, rel.Name)),
 	}
 	if tag != "" && !strings.ContainsAny(tag, "?#\\ ") {
 		info.NotesURL += "/tag/" + escapeTag(tag)
@@ -137,6 +137,19 @@ func (a *App) latestRelease(ctx context.Context, repo string) (releaseInfo, bool
 	}
 	a.releaseCache.Store(repo, cachedRelease{info: info, ok: true, at: time.Now()})
 	return info, true, nil
+}
+
+// cleanVersion keeps a version label to plain characters. It comes from an
+// image label or a GitHub release, and is shown in Discord, where brackets,
+// backticks and the like would turn it into links or formatting.
+func cleanVersion(v string) string {
+	var b strings.Builder
+	for _, r := range strings.TrimSpace(v) {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune(" .-_+:/~@", r) {
+			b.WriteRune(r)
+		}
+	}
+	return trunc(strings.TrimSpace(b.String()), 60)
 }
 
 func escapeTag(tag string) string {
@@ -179,7 +192,7 @@ func (a *App) addReleaseNotes(ctx context.Context, items []pendingUpdate, labels
 	for i := range items {
 		it := &items[i]
 		l := labels[it.ContainerID]
-		it.InstalledVersion = trunc(strings.TrimSpace(l["org.opencontainers.image.version"]), 60)
+		it.InstalledVersion = cleanVersion(l["org.opencontainers.image.version"])
 
 		repo, fromLabel := githubRepoFromSource(l["org.opencontainers.image.source"]), true
 		if repo == "" {

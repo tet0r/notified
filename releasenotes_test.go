@@ -119,3 +119,16 @@ func TestAddReleaseNotes(t *testing.T) {
 		t.Errorf("the second lookup should come from the cache, GitHub was asked %d times", hits["/repos/immich-app/immich/releases/latest"])
 	}
 }
+
+func TestCleanVersionStripsFormatting(t *testing.T) {
+	for in, want := range map[string]string{
+		"v1.2.3-ls45":                   "v1.2.3-ls45",
+		" 2024.10.1 ":                   "2024.10.1",
+		"[click](https://evil.example)": "clickhttps://evil.example",
+		"`1.0` **bold**\n<@&123>":       "1.0 bold@123",
+	} {
+		if got := cleanVersion(in); got != want {
+			t.Errorf("cleanVersion(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

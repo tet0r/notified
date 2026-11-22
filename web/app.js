@@ -727,7 +727,7 @@ async function containerUpdatesPage() {
           h('td', {}, h('b', {}, it.name), it.stack ? h('div', { class: 'dim' }, 'stack: ' + it.stack) : null,
             it.installed_version ? h('div', { class: 'dim' }, 'installed: ' + it.installed_version) : null),
           h('td', { class: 'mono' }, it.image),
-          h('td', {}, it.notes_url
+          h('td', {}, /^https:\/\//.test(it.notes_url || '')
             ? [h('a', { href: it.notes_url, target: '_blank', rel: 'noopener noreferrer' }, it.latest_version ? it.latest_version : 'Release notes'),
               it.released_at ? h('div', { class: 'dim' }, 'released ' + ago(it.released_at)) : null]
             : h('span', { class: 'dim' }, '—')),
