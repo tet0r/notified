@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -153,6 +154,28 @@ func escapeTag(tag string) string {
 
 // addReleaseNotes fills in where to read about each pending update.
 func (a *App) addReleaseNotes(ctx context.Context, items []pendingUpdate, labels map[string]map[string]string) {
+	// Warm the cache for every distinct repository at once, a few at a time;
+	// the loop below then reads the answers without waiting on GitHub.
+	var repos []string
+	seen := map[string]bool{}
+	for _, it := range items {
+		l := labels[it.ContainerID]
+		repo := githubRepoFromSource(l["org.opencontainers.image.source"])
+		if repo == "" {
+			repo = guessedRepo(it.Image)
+		}
+		if repo != "" && !seen[repo] {
+			seen[repo] = true
+			repos = append(repos, repo)
+		}
+	}
+	lookupErr := sync.Map{}
+	forEachLimited(4, repos, func(repo string) {
+		if _, _, err := a.latestRelease(ctx, repo); err != nil {
+			lookupErr.Store(repo, err)
+		}
+	})
+
 	for i := range items {
 		it := &items[i]
 		l := labels[it.ContainerID]
@@ -163,7 +186,14 @@ func (a *App) addReleaseNotes(ctx context.Context, items []pendingUpdate, labels
 			repo, fromLabel = guessedRepo(it.Image), false
 		}
 		if repo != "" {
-			info, found, err := a.latestRelease(ctx, repo)
+			var info releaseInfo
+			var found bool
+			var err error
+			if e, failed := lookupErr.Load(repo); failed {
+				err = e.(error) // don't ask GitHub twice in one check
+			} else {
+				info, found, err = a.latestRelease(ctx, repo)
+			}
 			switch {
 			case err == nil && found:
 				it.NotesURL, it.LatestVersion, it.ReleasedAt = info.NotesURL, info.Version, info.Published

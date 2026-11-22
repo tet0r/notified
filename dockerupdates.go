@@ -7,6 +7,7 @@ import (
 	"path"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -27,22 +28,75 @@ type scanOpts struct {
 }
 
 // Pacing for registry lookups; variables so tests can shorten them.
+// Lookups to the same registry are spaced registryGap apart (registries
+// throttle bursts); different registries proceed independently.
 var (
-	registryGap     = 300 * time.Millisecond
+	registryGap     = 150 * time.Millisecond
 	registryBackoff = 2 * time.Second
+	registryWorkers = 6 // lookups in flight at once, across all registries
+	inspectWorkers  = 8 // image inspections in flight at once
 )
 
-// retryThrottled runs a registry lookup. Registries throttle bursts of these
-// with HTTP 429, so lookups are spaced out and a throttled one is retried.
+// registryOf returns the registry an image reference is pulled from.
+func registryOf(image string) string {
+	first, _, ok := strings.Cut(imageRepo(image), "/")
+	if ok && (strings.ContainsAny(first, ".:") || first == "localhost") {
+		return strings.ToLower(first)
+	}
+	return "docker.io"
+}
+
+// pacer spaces out requests per key (here, per registry).
+type pacer struct {
+	mu   sync.Mutex
+	next map[string]time.Time
+}
+
+var registryPacer = &pacer{next: map[string]time.Time{}}
+
+func (p *pacer) wait(ctx context.Context, key string) error {
+	p.mu.Lock()
+	now := time.Now()
+	at := p.next[key]
+	if at.Before(now) {
+		at = now
+	}
+	p.next[key] = at.Add(registryGap)
+	p.mu.Unlock()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(time.Until(at)):
+		return nil
+	}
+}
+
+// forEachLimited runs fn for every key, at most n at a time, and waits.
+func forEachLimited(n int, keys []string, fn func(string)) {
+	sem := make(chan struct{}, n)
+	var wg sync.WaitGroup
+	for _, k := range keys {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(k string) {
+			defer func() { <-sem; wg.Done() }()
+			fn(k)
+		}(k)
+	}
+	wg.Wait()
+}
+
+// retryThrottled runs a registry lookup, retrying with backoff when the
+// registry answers "too many requests".
 func retryThrottled(ctx context.Context, fn func() error) error {
 	var err error
 	for attempt := 0; attempt < 4; attempt++ {
-		// A short gap before every lookup, growing after each throttled attempt.
-		wait := registryGap + time.Duration(attempt*attempt)*registryBackoff
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(wait):
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(time.Duration(attempt*attempt) * registryBackoff):
+			}
 		}
 		if err = fn(); err == nil || !isThrottled(err) {
 			return err
@@ -63,16 +117,24 @@ func isSocketProxy(c portainerContainer) bool {
 }
 
 // scanContainers compares each eligible running container's image with the
-// registry and appends the ones that are behind to the report.
+// registry and appends the ones that are behind to the report. Image details
+// and registry lookups run in parallel; results are assembled in container
+// order so reports and errors read the same from one check to the next.
 func scanContainers(ctx context.Context, call dockerCall, o scanOpts, report *portainerReport, addErr func(string, ...any)) {
 	var containers []portainerContainer
 	if err := call(ctx, http.MethodGet, "/containers/json", nil, &containers); err != nil {
 		addErr("%s: could not list containers: %v", o.envName, err)
 		return
 	}
-	localDigests := map[string]map[string]bool{}  // image id -> digests
-	imageLabels := map[string]map[string]string{} // image id -> labels
-	remoteDigest := map[string]string{}           // image ref -> digest ("" = lookup failed)
+
+	// 1. Decide which containers to check (cheap, no requests).
+	type candidate struct {
+		c       portainerContainer
+		name    string
+		project string
+	}
+	var cands []candidate
+	var imageIDs, seenID = []string{}, map[string]bool{}
 	for _, c := range containers {
 		if len(c.Names) == 0 {
 			continue
@@ -97,70 +159,110 @@ func scanContainers(ctx context.Context, call dockerCall, o scanOpts, report *po
 			report.Ignored++
 			continue
 		}
-
-		local, seen := localDigests[c.ImageID]
-		if !seen {
-			var img struct {
-				RepoDigests []string `json:"RepoDigests"`
-				Config      struct {
-					Labels map[string]string `json:"Labels"`
-				} `json:"Config"`
-			}
-			local = map[string]bool{}
-			if err := call(ctx, http.MethodGet, "/images/"+c.ImageID+"/json", nil, &img); err != nil {
-				addErr("%s: %v", name, err)
-			}
-			for _, d := range img.RepoDigests {
-				local[digestOf(d)] = true
-			}
-			localDigests[c.ImageID] = local
-			imageLabels[c.ImageID] = img.Config.Labels
+		cands = append(cands, candidate{c, name, project})
+		if !seenID[c.ImageID] {
+			seenID[c.ImageID] = true
+			imageIDs = append(imageIDs, c.ImageID)
 		}
-		if len(local) == 0 {
+	}
+
+	// 2. Inspect each distinct local image, several at a time.
+	type imageInfo struct {
+		digests map[string]bool
+		labels  map[string]string
+		err     error
+	}
+	var mu sync.Mutex
+	images := map[string]imageInfo{}
+	forEachLimited(inspectWorkers, imageIDs, func(id string) {
+		var img struct {
+			RepoDigests []string `json:"RepoDigests"`
+			Config      struct {
+				Labels map[string]string `json:"Labels"`
+			} `json:"Config"`
+		}
+		err := call(ctx, http.MethodGet, "/images/"+id+"/json", nil, &img)
+		info := imageInfo{digests: map[string]bool{}, labels: img.Config.Labels, err: err}
+		for _, d := range img.RepoDigests {
+			info.digests[digestOf(d)] = true
+		}
+		mu.Lock()
+		images[id] = info
+		mu.Unlock()
+	})
+
+	// 3. Ask the registry for each distinct image reference, paced per registry.
+	var refs, seenRef = []string{}, map[string]bool{}
+	for _, cd := range cands {
+		if len(images[cd.c.ImageID].digests) > 0 && !seenRef[cd.c.Image] {
+			seenRef[cd.c.Image] = true
+			refs = append(refs, cd.c.Image)
+		}
+	}
+	type remoteInfo struct {
+		digest string
+		err    error
+	}
+	remotes := map[string]remoteInfo{}
+	forEachLimited(registryWorkers, refs, func(ref string) {
+		var dist struct {
+			Descriptor struct {
+				Digest string `json:"digest"`
+			} `json:"Descriptor"`
+		}
+		err := retryThrottled(ctx, func() error {
+			if err := registryPacer.wait(ctx, registryOf(ref)); err != nil {
+				return err
+			}
+			return call(ctx, http.MethodGet, "/distribution/"+ref+"/json", nil, &dist)
+		})
+		mu.Lock()
+		remotes[ref] = remoteInfo{dist.Descriptor.Digest, err}
+		mu.Unlock()
+	})
+
+	// 4. Assemble the results in container order.
+	reportedInspect, reportedRef := map[string]bool{}, map[string]bool{}
+	for _, cd := range cands {
+		img := images[cd.c.ImageID]
+		if img.err != nil && !reportedInspect[cd.c.ImageID] {
+			reportedInspect[cd.c.ImageID] = true
+			addErr("%s: %v", cd.name, img.err)
+		}
+		if len(img.digests) == 0 {
 			report.Ignored++ // built locally or never pulled from a registry
 			continue
 		}
-
-		remote, seen := remoteDigest[c.Image]
-		if !seen {
-			var dist struct {
-				Descriptor struct {
-					Digest string `json:"digest"`
-				} `json:"Descriptor"`
-			}
-			err := retryThrottled(ctx, func() error {
-				return call(ctx, http.MethodGet, "/distribution/"+c.Image+"/json", nil, &dist)
-			})
-			if err != nil {
-				addErr("%s: could not check %s: %v", name, c.Image, err)
-			}
-			remote = dist.Descriptor.Digest
-			remoteDigest[c.Image] = remote
+		rem := remotes[cd.c.Image]
+		if rem.err != nil && !reportedRef[cd.c.Image] {
+			reportedRef[cd.c.Image] = true
+			addErr("%s: could not check %s: %v", cd.name, cd.c.Image, rem.err)
 		}
-		if remote == "" {
+		if rem.digest == "" {
 			continue
 		}
 		report.Checked++
-		if !local[remote] {
-			report.Items = append(report.Items, pendingUpdate{
-				EnvID: o.envID, EnvName: o.envName, ContainerID: c.ID, Name: name,
-				Image: c.Image, Stack: project, Latest: remote,
-			})
-			// Container labels include the image's, so either source works.
-			l := map[string]string{}
-			for k, v := range imageLabels[c.ImageID] {
+		if img.digests[rem.digest] {
+			continue
+		}
+		report.Items = append(report.Items, pendingUpdate{
+			EnvID: o.envID, EnvName: o.envName, ContainerID: cd.c.ID, Name: cd.name,
+			Image: cd.c.Image, Stack: cd.project, Latest: rem.digest,
+		})
+		// Container labels include the image's, so either source works.
+		l := map[string]string{}
+		for k, v := range img.labels {
+			l[k] = v
+		}
+		for _, k := range []string{"org.opencontainers.image.source", "org.opencontainers.image.version"} {
+			if v := cd.c.Labels[k]; v != "" && l[k] == "" {
 				l[k] = v
 			}
-			for _, k := range []string{"org.opencontainers.image.source", "org.opencontainers.image.version"} {
-				if v := c.Labels[k]; v != "" && l[k] == "" {
-					l[k] = v
-				}
-			}
-			if report.labels == nil {
-				report.labels = map[string]map[string]string{}
-			}
-			report.labels[c.ID] = l
 		}
+		if report.labels == nil {
+			report.labels = map[string]map[string]string{}
+		}
+		report.labels[cd.c.ID] = l
 	}
 }
 
