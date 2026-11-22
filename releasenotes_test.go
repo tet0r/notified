@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -52,9 +53,13 @@ func TestGuessedRepoAndDockerHub(t *testing.T) {
 }
 
 func TestAddReleaseNotes(t *testing.T) {
+	// Lookups run in parallel, so the fake server's counter needs a lock.
+	var mu sync.Mutex
 	hits := map[string]int{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
 		hits[r.URL.Path]++
+		mu.Unlock()
 		switch r.URL.Path {
 		case "/repos/immich-app/immich/releases/latest":
 			w.Write([]byte(`{"tag_name":"v2.3.1","name":"v2.3.1","published_at":"2026-11-18T10:00:00Z","html_url":"https://evil.example/x"}`))
@@ -108,6 +113,8 @@ func TestAddReleaseNotes(t *testing.T) {
 	}
 
 	a.addReleaseNotes(context.Background(), items[:1], labels)
+	mu.Lock()
+	defer mu.Unlock()
 	if hits["/repos/immich-app/immich/releases/latest"] != 1 {
 		t.Errorf("the second lookup should come from the cache, GitHub was asked %d times", hits["/repos/immich-app/immich/releases/latest"])
 	}
